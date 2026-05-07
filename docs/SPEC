@@ -1,0 +1,528 @@
+# Herohome PWA — Especificación Técnica para Claude Code
+
+> Este documento contiene TODA la información que Claude Code necesita para construir la PWA.
+> Está organizado en fases. Ejecuta una fase por sesión. No avances sin testear la anterior.
+
+---
+
+## Contexto del proyecto
+
+Herohome es una proptech española. Los propietarios de vivienda (CV = Cliente Vendedor) venden su
+inmueble sin agencia, usando un ecosistema digital: Salesforce (CRM), Supabase (backend), WhatsApp
+(comunicación con compradores) y esta PWA (portal del vendedor).
+
+La PWA es la herramienta del CV para:
+1. Ver y editar los datos de su vivienda
+2. Gestionar su calendario de visitas (configurar disponibilidad, confirmar/cancelar visitas)
+3. Gestionar ofertas de compra (aceptar, rechazar, contraofertar)
+4. Chatear con el agente IA "Hero" para resolver dudas sobre su venta
+
+El backend (Supabase) ya está desplegado con todas las tablas y RLS configurados.
+Las Edge Functions se desarrollan por separado. Esta PWA solo consume la API de Supabase.
+
+---
+
+## Supabase — Esquema de tablas
+
+### users
+| Columna | Tipo | Constraints |
+|---------|------|-------------|
+| id | uuid | PK, FK (auth.users), Non-nullable |
+| salesforce_contact_id | text | Unique, Nullable |
+| salesforce_account_id | text | Unique, Nullable |
+| first_name | text | Non-nullable |
+| last_name | text | Non-nullable |
+| email | text | Unique, Non-nullable |
+| dni | text | Nullable |
+| phone | text | Nullable |
+| created_at | timestamptz | Nullable |
+| updated_at | timestamptz | Nullable |
+| terms_accepted_at | timestamptz | Nullable |
+
+### properties
+| Columna | Tipo | Constraints |
+|---------|------|-------------|
+| id | uuid | PK, Non-nullable |
+| salesforce_account_id | text | Unique, Non-nullable |
+| user_id | uuid | FK → users.id, Non-nullable |
+| idealista_listing_id | text | Nullable |
+| street | text | Nullable |
+| city | text | Nullable |
+| state | text | Nullable |
+| postal_code | text | Nullable |
+| housing_type | text | Nullable — Valores: Piso, Chalet, Ático, Dúplex, Estudio, Finca rústica |
+| rooms | int4 | Nullable — Valores: 1-8 |
+| bathrooms | int4 | Nullable — Valores: 1-5 |
+| built_area | numeric | Nullable — m² |
+| useful_surface_area | numeric | Nullable — m² |
+| age | int4 | Nullable |
+| floor | int4 | Nullable |
+| has_elevator | bool | Nullable |
+| is_exterior | bool | Nullable |
+| orientation | text | Nullable — Valores: Norte, Sur, Este, Oeste, Sureste, Suroeste, Noreste, Noroeste |
+| heating_type | text | Nullable — Valores: No disponible, Central, Individual - Eléctrica, Individual Gas, Individual Otros |
+| condition | text | Nullable — Valores: Nueva o recién reformada, Buen estado, Para reformar |
+| community_fee | numeric | Nullable — €/mes |
+| electronic_certificate | text | Nullable — Valores: A, B, C, D, E, F, G, En trámite |
+| sales_price | numeric | Nullable — € |
+| reject_offers_below | numeric | Nullable — € |
+| ref_catastral | text | Nullable |
+| description | text | Nullable |
+| status | text | Nullable — Valores: On Sale, Sold, Contract cancelled |
+| garage_space | text | Nullable — Valores: Sin plaza de garaje, Con 1 plaza de garaje, Con 2 plazas de garaje, Con 3 plazas de garaje |
+| registro_propiedad | numeric | Nullable |
+| sf_last_sync_at | timestamptz | Nullable |
+| created_at | timestamptz | Nullable |
+| updated_at | timestamptz | Nullable |
+
+### visit_slots
+| Columna | Tipo | Constraints |
+|---------|------|-------------|
+| id | uuid | PK, Non-nullable |
+| property_id | uuid | FK → properties.id, Non-nullable |
+| start_time | timestamptz | Non-nullable |
+| end_time | timestamptz | Non-nullable |
+| status | text | Nullable — Valores: available, pending_to_confirm, confirmed, canceled_by_owner, canceled_by_visitor, not_available |
+| visitor_name | text | Nullable |
+| visitor_last_name | text | Nullable |
+| visitor_phone | text | Nullable |
+| visitor_dni | text | Nullable |
+| visitor_email | text | Nullable |
+| salesforce_event_id | text | Nullable |
+| consent_given | bool | Nullable |
+| consent_at | timestamptz | Nullable |
+| created_at | timestamptz | Nullable |
+| updated_at | timestamptz | Nullable |
+
+### availability_config
+| Columna | Tipo | Constraints |
+|---------|------|-------------|
+| id | uuid | PK, Non-nullable |
+| property_id | uuid | FK → properties.id, Unique, Non-nullable |
+| config | jsonb | Non-nullable |
+| updated_at | timestamptz | Nullable |
+
+El campo `config` tiene esta estructura:
+```json
+[
+  { "day_of_week": 0, "from_hour": 10, "to_hour": 14, "is_active": true },
+  { "day_of_week": 1, "from_hour": 10, "to_hour": 14, "is_active": true },
+  { "day_of_week": 2, "from_hour": 10, "to_hour": 14, "is_active": false },
+  ...
+]
+```
+day_of_week: 0=Lunes, 1=Martes, ..., 6=Domingo. Horas completas (0-23).
+
+### offers
+| Columna | Tipo | Constraints |
+|---------|------|-------------|
+| id | uuid | PK, Non-nullable |
+| salesforce_quote_id | text | Unique, Non-nullable |
+| property_id | uuid | FK → properties.id, Non-nullable |
+| parent_offer_id | uuid | FK → offers.id, Nullable |
+| initiated_by | text | Non-nullable — Valores: buyer, seller |
+| buyer_name | text | Nullable |
+| buyer_phone | text | Nullable |
+| amount | numeric | Non-nullable — € |
+| status | text | Nullable — Valores: presented, accepted, denied |
+| created_at | timestamptz | Nullable |
+| updated_at | timestamptz | Nullable |
+
+### pwa_chat_sessions
+| Columna | Tipo | Constraints |
+|---------|------|-------------|
+| id | uuid | PK, Non-nullable |
+| user_id | uuid | FK → users.id, Non-nullable |
+| messages | jsonb | Non-nullable |
+| created_at | timestamptz | Nullable |
+| updated_at | timestamptz | Nullable |
+
+El campo `messages` tiene esta estructura:
+```json
+[
+  { "role": "user", "content": "¿Cuántas visitas tengo?", "timestamp": "2025-01-15T10:30:00Z" },
+  { "role": "assistant", "content": "Tienes 2 visitas confirmadas...", "timestamp": "2025-01-15T10:30:05Z" }
+]
+```
+
+### notifications
+| Columna | Tipo | Constraints |
+|---------|------|-------------|
+| id | uuid | PK, Non-nullable |
+| user_id | uuid | FK → users.id, Non-nullable |
+| type | text | Non-nullable — Valores: new_visit_request, visit_confirmed, visit_canceled, new_offer, offer_updated |
+| payload | jsonb | Nullable |
+| read | bool | Nullable (default false) |
+| created_at | timestamptz | Nullable |
+
+---
+
+## Pantallas de la PWA
+
+### Estructura de navegación
+```
+Login (pantalla pública)
+│
+└── MainLayout (autenticado) — header + sidebar
+    ├── Home / Chat con Hero (pantalla principal, ruta: /)
+    ├── Mi Vivienda (ruta: /property)
+    ├── Mi Calendario (ruta: /calendar)
+    │   ├── Tab: Pendientes de confirmar
+    │   ├── Tab: Próximas visitas
+    │   └── Tab: Configurar disponibilidad
+    └── Mis Ofertas (ruta: /offers)
+```
+
+### Sidebar (menú lateral)
+- Slide-in desde la izquierda, activado por ícono hamburguesa en el header
+- Links: Inicio, Mi Vivienda, Mi Calendario, Mis Ofertas
+- Nombre del usuario en la parte superior
+- Botón "Cerrar sesión" en la parte inferior
+
+---
+
+## FASE 1: Esqueleto del proyecto y autenticación
+
+### Objetivo
+Proyecto Vite funcional con login por Magic Link. Al hacer login, el usuario ve un layout
+vacío con las 4 secciones del menú.
+
+### Tareas
+1. Inicializar proyecto: `npm create vite@latest . -- --template react-ts`
+2. Instalar dependencias:
+   ```
+   npm install @supabase/supabase-js react-router-dom
+   npm install -D tailwindcss @tailwindcss/vite vite-plugin-pwa
+   ```
+3. Configurar Tailwind CSS (v4 con @tailwindcss/vite plugin)
+4. Configurar vite-plugin-pwa con manifest:
+   ```json
+   {
+     "name": "Herohome",
+     "short_name": "Herohome",
+     "start_url": "/",
+     "display": "standalone",
+     "background_color": "#ffffff",
+     "theme_color": "#2E5EA1",
+     "icons": [{ "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+   }
+   ```
+5. Crear `src/lib/supabaseClient.ts`:
+   ```typescript
+   import { createClient } from '@supabase/supabase-js'
+   
+   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+   const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+   
+   export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+   ```
+6. Crear `src/context/AuthContext.tsx`:
+   - Usa `supabase.auth.getSession()` al montar para recuperar sesión existente
+   - Suscríbete a `supabase.auth.onAuthStateChange()` para detectar login/logout
+   - Expón: `session`, `user`, `loading`, `signOut()`
+7. Crear `src/pages/LoginPage.tsx`:
+   - Input de email + botón "Enviar enlace de acceso"
+   - Llama a `supabase.auth.signInWithOtp({ email })`
+   - Tras enviar, muestra mensaje: "Revisa tu email y pulsa el enlace para acceder"
+   - Diseño centrado, mobile-first, con logo Herohome (texto por ahora, no imagen)
+   - Idioma: ESPAÑOL
+8. Crear `src/layouts/MainLayout.tsx`:
+   - Header fijo con título "Herohome" y botón hamburguesa
+   - Sidebar slide-in con los 4 links de navegación
+   - Outlet de React Router para contenido
+   - Nombre del usuario (de AuthContext) en el sidebar
+   - Botón "Cerrar sesión" en el sidebar
+9. Crear páginas placeholder (solo un título h1 por ahora):
+   - `src/pages/HomePage.tsx` → "Chat con Hero" (ruta: /)
+   - `src/pages/PropertyPage.tsx` → "Mi Vivienda" (ruta: /property)
+   - `src/pages/CalendarPage.tsx` → "Mi Calendario" (ruta: /calendar)
+   - `src/pages/OffersPage.tsx` → "Mis Ofertas" (ruta: /offers)
+10. Configurar React Router en `src/main.tsx`:
+    - Ruta pública: `/login` → LoginPage
+    - Rutas protegidas (dentro de MainLayout): `/`, `/property`, `/calendar`, `/offers`
+    - Si no hay sesión, redirigir a `/login`
+    - Si hay sesión y está en `/login`, redirigir a `/`
+11. Manejar el callback de Magic Link:
+    - Supabase Auth redirige al usuario con tokens en el hash de la URL
+    - `supabase.auth.onAuthStateChange()` lo detecta automáticamente
+    - No hace falta una ruta especial de callback si usas el listener
+
+### Criterio de éxito
+- `npm run dev` arranca sin errores
+- La pantalla de login aparece en http://localhost:5173/login
+- Se puede enviar un Magic Link a un email de prueba
+- Al pulsar el Magic Link, el usuario llega al layout principal con las 4 secciones
+- El sidebar funciona y se puede navegar entre secciones
+- "Cerrar sesión" funciona y vuelve al login
+
+---
+
+## FASE 2: Mi Vivienda (lectura)
+
+### Objetivo
+El CV ve los datos de su vivienda cargados desde Supabase.
+
+### Tareas
+1. Crear `src/hooks/useProperty.ts`:
+   - Hace query: `supabase.from('properties').select('*').eq('user_id', user.id).single()`
+   - Devuelve: `{ property, loading, error }`
+2. Crear tipo `src/lib/types.ts` con la interfaz `Property` basada en la tabla properties
+3. Implementar `PropertyPage.tsx`:
+   - Muestra todos los campos de la propiedad en un formulario de SOLO LECTURA
+   - Agrupa campos en secciones: Ubicación, Características, Precios, Otros
+   - Campos numéricos formateados (ej: 250.000 € para sales_price)
+   - Si `loading`, mostrar skeleton
+   - Si `error` o no hay propiedad, mostrar mensaje amigable
+
+### Criterio de éxito
+- Al navegar a /property, se cargan los datos de la propiedad del usuario autenticado
+- Todos los campos se muestran correctamente formateados
+- No se puede editar nada (la edición es Fase 3)
+
+---
+
+## FASE 3: Mi Vivienda (edición)
+
+### Objetivo
+El CV puede editar los datos de su vivienda y guardarlos en Supabase.
+
+### Tareas
+1. Convertir PropertyPage de solo lectura a formulario editable:
+   - Campos de texto: input type="text"
+   - Campos numéricos: input type="number"
+   - Campos booleanos: toggle/switch (has_elevator, is_exterior)
+   - Campos picklist: select con las opciones definidas en el esquema
+   - Campo description: textarea
+2. Botón "Guardar cambios" que:
+   - Hace `supabase.from('properties').update({...}).eq('id', property.id)`
+   - Muestra toast de éxito o error
+   - Actualiza `updated_at` automáticamente
+3. Validaciones básicas:
+   - sales_price > 0 si se introduce
+   - reject_offers_below < sales_price si ambos tienen valor
+   - rooms, bathrooms: dentro de los rangos permitidos
+4. Estado de "cambios sin guardar":
+   - Si el usuario ha modificado algo y no ha guardado, el botón se activa
+   - Si intenta navegar sin guardar, mostrar confirmación
+
+### Nota
+La sincronización con Salesforce (Edge Function update-property-to-sf) se integra en la Fase 7.
+En esta fase, solo se guarda en Supabase.
+
+### Criterio de éxito
+- El CV puede editar cualquier campo y guardar
+- Los cambios persisten tras recargar la página
+- Las validaciones funcionan
+- El toast de confirmación aparece
+
+---
+
+## FASE 4: Mi Calendario
+
+### Objetivo
+El CV puede configurar su disponibilidad, ver visitas pendientes y próximas.
+
+### Tareas
+
+#### 4A: Configurar disponibilidad
+1. Crear `src/hooks/useAvailability.ts`:
+   - Query: `supabase.from('availability_config').select('*').eq('property_id', propertyId).single()`
+   - Devuelve: `{ config, loading, saveConfig }`
+2. UI: Tabla con 7 filas (Lunes a Domingo). Cada fila tiene:
+   - Toggle de activo/inactivo
+   - Selector de hora inicio (select de 7:00 a 21:00, horas completas)
+   - Selector de hora fin (select de 8:00 a 22:00, horas completas, > hora inicio)
+3. Botón "Guardar disponibilidad":
+   - Upsert en availability_config (insert si no existe, update si existe)
+   - Toast de confirmación
+
+#### 4B: Visitas pendientes de confirmación
+1. Crear `src/hooks/useVisits.ts`:
+   - Query pendientes: `supabase.from('visit_slots').select('*').eq('property_id', propertyId).eq('status', 'pending_to_confirm').order('start_time')`
+   - Query confirmadas: `supabase.from('visit_slots').select('*').eq('property_id', propertyId).eq('status', 'confirmed').gte('start_time', new Date().toISOString()).order('start_time')`
+2. UI pendientes: tarjetas con fecha, hora, nombre del visitante. Dos botones:
+   - "Confirmar" → update status a `confirmed`
+   - "Cancelar" → update status a `canceled_by_owner`
+3. Tras confirmar o cancelar, refrescar la lista
+
+#### 4C: Próximas visitas
+1. UI: listado de visitas con status=confirmed y start_time en el futuro
+2. Cada tarjeta muestra: fecha, hora, nombre del visitante, teléfono (si disponible)
+3. Botón "Solicitar reagendar":
+   - Validación: si start_time - now() < 24 horas → mostrar error "No se puede reagendar con menos de 24h de antelación"
+   - Si válido: update status a `canceled_by_owner`
+   - Toast de confirmación
+
+#### Tabs
+CalendarPage tiene 3 tabs: "Pendientes", "Próximas", "Disponibilidad"
+
+### Criterio de éxito
+- La configuración de disponibilidad se guarda y recupera correctamente
+- Las visitas pendientes se muestran con botones funcionales
+- La validación de 24 horas funciona
+- Las tabs navegan correctamente
+
+---
+
+## FASE 5: Mis Ofertas
+
+### Objetivo
+El CV ve sus ofertas y puede aceptar, rechazar o contraofertar.
+
+### Tareas
+1. Crear `src/hooks/useOffers.ts`:
+   - Query: `supabase.from('offers').select('*').eq('property_id', propertyId).order('created_at', { ascending: false })`
+2. Crear tipo `Offer` en types.ts
+3. UI: tarjetas de oferta, cada una con:
+   - Importe (formateado: 250.000 €)
+   - Nombre del comprador (buyer_name)
+   - Quién la inició (initiated_by: buyer → "Oferta del comprador", seller → "Tu contraoferta")
+   - Estado (presented → "Pendiente", accepted → "Aceptada", denied → "Rechazada")
+   - Si parent_offer_id no es null, indicar "Ronda de negociación" (mostrar la cadena)
+4. Botones de acción (solo visibles si status = "presented" AND initiated_by = "buyer"):
+   - "Aceptar" → update status a `accepted`
+   - "Rechazar" → update status a `denied`
+   - "Contraofertar" → abre modal con input numérico
+5. Modal de contraoferta:
+   - Input numérico (sin decimales)
+   - Validación: importe > 0
+   - Al enviar: crear nuevo registro en offers con initiated_by = "seller", parent_offer_id = oferta actual, status = "presented"
+   - Simultáneamente: update la oferta actual a status = "denied"
+
+### Nota
+La sincronización con Salesforce (Edge Functions sync-offer-from-sf y update-offer-to-sf)
+se integra en la Fase 7. En esta fase, solo se trabaja con Supabase.
+
+### Criterio de éxito
+- Las ofertas se muestran correctamente agrupadas
+- Los botones de acción solo aparecen cuando corresponde
+- Aceptar y rechazar actualizan el estado
+- Contraofertar crea nueva oferta y marca la anterior como denied
+- La cadena de negociación es visible
+
+---
+
+## FASE 6: Chat con Hero
+
+### Objetivo
+El CV puede chatear con el agente IA Hero en la pantalla principal.
+
+### Tareas
+1. Crear `src/hooks/useChatSession.ts`:
+   - Recupera sesión existente: `supabase.from('pwa_chat_sessions').select('*').eq('user_id', user.id).order('updated_at', { ascending: false }).limit(1).single()`
+   - Si no existe, crea una nueva al enviar el primer mensaje
+   - Función `sendMessage(content)` que:
+     a. Añade el mensaje del usuario al array `messages` localmente (para UX inmediata)
+     b. Llama a la Edge Function `chat-with-hero`:
+        ```
+        POST https://zqkvcphtqmibttgnivku.supabase.co/functions/v1/chat-with-hero
+        Headers: { Authorization: Bearer <session_token> }
+        Body: { message: content, session_id: sessionId }
+        ```
+     c. Recibe la respuesta del agente
+     d. Actualiza el array `messages` con la respuesta
+     e. Persiste en pwa_chat_sessions
+2. UI del chat:
+   - Lista de mensajes con scroll automático al fondo
+   - Burbujas diferenciadas: usuario (derecha, azul) y Hero (izquierda, gris)
+   - Input de texto fijo en la parte inferior con botón enviar
+   - Indicador de "Hero está escribiendo..." mientras se espera respuesta
+   - Si la Edge Function no está disponible, mostrar error amigable: "Hero no está disponible en este momento"
+3. Mensajes iniciales:
+   - Si es la primera vez del usuario, mostrar mensaje de bienvenida del sistema:
+     "¡Hola! Soy Hero, tu asistente personal de Herohome. ¿En qué puedo ayudarte?"
+
+### Nota
+La Edge Function chat-with-hero se desarrolla por separado. En esta fase,
+la PWA debe manejar correctamente tanto el caso de éxito como el caso de
+que la Edge Function no esté aún disponible (mostrar error graceful).
+
+### Criterio de éxito
+- La interfaz de chat se muestra como pantalla principal
+- Los mensajes se persisten en pwa_chat_sessions
+- Si la Edge Function responde, la conversación funciona
+- Si no responde, se muestra error amigable (no rompe la app)
+- El scroll funciona correctamente con muchos mensajes
+
+---
+
+## FASE 7: Notificaciones y Edge Function integration
+
+### Objetivo
+Integrar las notificaciones in-app y preparar los puntos de integración con Edge Functions
+para sincronización con Salesforce.
+
+### Tareas
+
+#### 7A: Notificaciones
+1. Crear `src/hooks/useNotifications.ts`:
+   - Query: `supabase.from('notifications').select('*').eq('user_id', user.id).eq('read', false).order('created_at', { ascending: false })`
+   - Suscripción en tiempo real: `supabase.channel('notifications').on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications', filter: 'user_id=eq.' + user.id }, handler).subscribe()`
+   - Función `markAsRead(notificationId)`
+2. UI: icono de campana en el header con badge de conteo
+3. Dropdown o panel con lista de notificaciones
+4. Al pulsar una notificación, navegar a la pantalla correspondiente:
+   - new_visit_request → /calendar (tab pendientes)
+   - new_offer → /offers
+   - visit_confirmed, visit_canceled → /calendar (tab próximas)
+
+#### 7B: Preparar integración con Edge Functions
+1. En PropertyPage, al guardar:
+   - Además del update en Supabase, hacer fetch a `update-property-to-sf`:
+     ```
+     POST /functions/v1/update-property-to-sf
+     Headers: { Authorization: Bearer <session_token> }
+     Body: { property_id, ...changedFields }
+     ```
+   - Si la Edge Function falla, mostrar warning pero NO revertir el cambio en Supabase
+     (Supabase es fuente de verdad para la PWA, SF se sincroniza eventualmente)
+2. En OffersPage, al aceptar/rechazar/contraofertar:
+   - Además del update en Supabase, hacer fetch a `update-offer-to-sf`:
+     ```
+     POST /functions/v1/update-offer-to-sf
+     Headers: { Authorization: Bearer <session_token> }
+     Body: { offer_id, action: "accept"|"deny"|"counter", counter_amount?: number }
+     ```
+   - Mismo patrón: si falla SF, warning pero no revertir
+
+### Criterio de éxito
+- Las notificaciones aparecen en tiempo real
+- El badge de conteo se actualiza
+- Pulsar una notificación navega a la sección correcta
+- Los fetch a Edge Functions están implementados con error handling graceful
+- Si las Edge Functions no están desplegadas aún, la app sigue funcionando
+
+---
+
+## Diseño visual
+
+### Colores
+- Primario: #2E5EA1 (azul Herohome)
+- Fondo: #FFFFFF
+- Texto principal: #1A1A1A
+- Texto secundario: #666666
+- Éxito: #28A745
+- Error: #DC3545
+- Warning: #FFC107
+- Fondo tarjetas: #F8F9FA
+
+### Tipografía
+- Font: Inter (Google Fonts) o system font stack
+- Tamaños: text-sm (12px), text-base (14px), text-lg (16px), text-xl (18px), text-2xl (24px)
+
+### Componentes reutilizables a crear
+- `Button`: variantes primary, secondary, danger, ghost. Tamaños sm, md, lg.
+- `Card`: contenedor con sombra ligera, padding, border-radius
+- `Modal`: overlay con contenido centrado, botón de cerrar
+- `Toast`: notificación temporal (éxito/error/info), posición bottom-center
+- `LoadingSkeleton`: placeholder animado mientras cargan datos
+- `Badge`: indicador numérico (para notificaciones)
+- `Tabs`: navegación por tabs (para CalendarPage)
+- `Toggle`: switch on/off (para disponibilidad y campos booleanos)
+
+### Mobile-first
+- Diseño base: 375px de ancho
+- Sidebar: oculto por defecto, slide-in con overlay
+- Tabs: scroll horizontal si no caben
+- Formularios: inputs full-width, labels encima del input
+- Tarjetas: stack vertical, una por fila
