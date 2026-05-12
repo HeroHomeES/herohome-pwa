@@ -1,0 +1,119 @@
+export function welcomeEmailHtml({
+  firstName,
+  magicLink,
+}: {
+  firstName: string
+  magicLink: string
+}): string {
+  return `<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <title>Bienvenido a Herohome</title>
+</head>
+<body style="margin:0;padding:0;background-color:#F8FAFC;font-family:Inter,system-ui,-apple-system,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#F8FAFC;padding:32px 16px;">
+    <tr>
+      <td align="center">
+        <!-- Card -->
+        <table width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;background-color:#FFFFFF;border-radius:12px;border:1px solid #E2E8F0;">
+
+          <!-- Header -->
+          <tr>
+            <td style="padding:24px;">
+              <table cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <!-- Logo símbolo: dos barras verticales -->
+                  <td style="vertical-align:top;">
+                    <table cellpadding="0" cellspacing="0" border="0">
+                      <tr>
+                        <!-- Barra izquierda -->
+                        <td style="vertical-align:top;">
+                          <div style="width:10px;height:40px;border-radius:3px;background-color:#5B5CFF;background-image:linear-gradient(to bottom,#A5A6FF,#3C3ECC);"><!--[if gte mso 9]><v:rect style="width:10px;height:40px;" fillcolor="#5B5CFF" stroked="f"><v:fill type="gradient" color="#A5A6FF" color2="#3C3ECC" angle="270"/></v:rect><![endif]--></div>
+                        </td>
+                        <!-- Separación 6px -->
+                        <td style="width:6px;"></td>
+                        <!-- Barra derecha desplazada 10px hacia abajo -->
+                        <td style="vertical-align:top;padding-top:10px;">
+                          <div style="width:10px;height:30px;border-radius:3px;background-color:#5B5CFF;background-image:linear-gradient(to bottom,#5B5CFF,#282999);"><!--[if gte mso 9]><v:rect style="width:10px;height:30px;" fillcolor="#5B5CFF" stroked="f"><v:fill type="gradient" color="#5B5CFF" color2="#282999" angle="270"/></v:rect><![endif]--></div>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                  <!-- Separación entre logo y wordmark -->
+                  <td style="width:12px;"></td>
+                  <!-- Wordmark -->
+                  <td style="vertical-align:middle;">
+                    <span style="font-family:Inter,system-ui,-apple-system,sans-serif;font-size:20px;font-weight:600;letter-spacing:-0.03em;color:#0A0E17;">Herohome</span>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- Separador bajo el header -->
+          <tr>
+            <td style="padding:0 24px;">
+              <div style="height:1px;background-color:#E2E8F0;"></div>
+            </td>
+          </tr>
+
+          <!-- Cuerpo principal -->
+          <tr>
+            <td style="padding:32px 24px 24px 24px;">
+
+              <!-- Saludo -->
+              <p style="margin:0 0 24px 0;font-family:Inter,system-ui,-apple-system,sans-serif;font-size:24px;font-weight:600;letter-spacing:-0.03em;color:#0A0E17;">¡Hola, ${firstName}!</p>
+
+              <!-- Párrafo 1 -->
+              <p style="margin:0 0 16px 0;font-family:Inter,system-ui,-apple-system,sans-serif;font-size:16px;font-weight:400;line-height:1.6;color:#0A0E17;">
+                Ya eres parte de Herohome. Tu vivienda está en manos del equipo y desde ahora puedes seguir todo el proceso de venta directamente desde tu cuenta personal.
+              </p>
+
+              <!-- Párrafo 2 -->
+              <p style="margin:0 0 16px 0;font-family:Inter,system-ui,-apple-system,sans-serif;font-size:16px;font-weight:400;line-height:1.6;color:#0A0E17;">
+                En la app encontrarás los datos de tu vivienda, tu calendario de visitas y las ofertas que vayas recibiendo. Hero, nuestro asistente, estará disponible para resolver cualquier duda durante todo el proceso.
+              </p>
+
+              <!-- Párrafo 3 -->
+              <p style="margin:0 0 32px 0;font-family:Inter,system-ui,-apple-system,sans-serif;font-size:16px;font-weight:400;line-height:1.6;color:#0A0E17;">
+                Pulsa el botón para acceder a tu cuenta. El enlace es personal y de un solo uso.
+              </p>
+
+              <!-- Botón CTA -->
+              <table width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td align="center">
+                    <a href="${magicLink}" target="_blank" style="display:inline-block;background-color:#5B5CFF;color:#FFFFFF;font-family:Inter,system-ui,-apple-system,sans-serif;font-size:16px;font-weight:600;text-decoration:none;padding:16px 32px;border-radius:7px;">Acceder a mi cuenta</a>
+                  </td>
+                </tr>
+              </table>
+
+              <!-- Fallback del enlace -->
+              <p style="margin:24px 0 0 0;font-family:Inter,system-ui,-apple-system,sans-serif;font-size:13px;color:#94A3B8;line-height:1.5;text-align:center;">
+                Si el botón no funciona, copia y pega este enlace en tu navegador:<br />
+                <span style="color:#64748B;word-break:break-all;">${magicLink}</span>
+              </p>
+
+            </td>
+          </tr>
+
+          <!-- Pie -->
+          <tr>
+            <td style="background-color:#0A0E17;border-radius:0 0 12px 12px;padding:24px;">
+              <p style="margin:0;font-family:Inter,system-ui,-apple-system,sans-serif;font-size:13px;color:#94A3B8;text-align:center;">
+                Herohome — Vende tu casa sin agencia &nbsp;·&nbsp;
+                <a href="https://herohome.es" target="_blank" style="color:#5B5CFF;text-decoration:none;">herohome.es</a>
+              </p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`
+}
