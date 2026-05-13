@@ -16,7 +16,7 @@ interface SlotInsert {
   property_id: string
   start_time: string
   end_time: string
-  status: "available"
+  status: "Available"
 }
 
 const corsHeaders = {
@@ -108,7 +108,7 @@ async function processProperty(
     .from("visit_slots")
     .delete({ count: "exact" })
     .eq("property_id", propertyId)
-    .eq("status", "available")
+    .eq("status", "Available")
     .gte("start_time", nowISO)
 
   if (deleteError) throw new Error(`Error borrando slots de ${propertyId}: ${deleteError.message}`)
@@ -147,7 +147,7 @@ async function processProperty(
         property_id: propertyId,
         start_time: startUTC.toISOString(),
         end_time: endUTC.toISOString(),
-        status: "available",
+        status: "Available",
       })
     }
   }
