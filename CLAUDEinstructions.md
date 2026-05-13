@@ -46,6 +46,14 @@ src/
 - RLS está activado: cada usuario solo ve sus propios datos (filtro por auth.uid())
 - NUNCA uses la Service Role Key en el cliente. Solo anon key.
 
+- ## Arquitectura v3.0
+
+- La arquitectura vigente es la v3.0. Lee ARCHITECTURE_V3_DECISIONS.md antes de proponer funcionalidades o crear Edge Functions.
+- No crear Edge Functions de sincronización con Salesforce (update-property-to-sf, update-offer-to-sf, confirm-visit-to-sf, sync-offer-from-sf). Corresponden a v2.0 y están eliminadas.
+- Supabase es la fuente de verdad operativa para visitas, ofertas y propiedades. Salesforce solo se usa para onboarding (Lead → Account → Contact) y contratos.
+- Notificaciones al PC: siempre vía webhook a Make → Gmail. Nunca vía Salesforce Flows.
+- Email de bienvenida al CV: vía Edge Function + Resend (no Make).
+
 ### Reglas importantes
 - NUNCA commitees .env ni secrets
 - Las Edge Functions de Supabase NO están en este repo — están desplegadas aparte
