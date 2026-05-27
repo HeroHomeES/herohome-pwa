@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
+import { callEdgeFunction } from '../lib/edgeFunctions'
 import type { VisitSlot } from '../lib/types'
 
 export function useVisits(propertyId: string | null) {
@@ -38,8 +39,10 @@ export function useVisits(propertyId: string | null) {
       .from('visit_slots')
       .update({ status: 'Confirmed', updated_at: new Date().toISOString() })
       .eq('id', id)
-    if (!error) loadVisits()
-    return { error: error?.message ?? null }
+    if (error) return { error: error.message }
+    loadVisits()
+    callEdgeFunction('notify-visit', { visit_slot_id: id, action: 'Confirmed' })
+    return { error: null }
   }
 
   const cancelVisit = async (id: string): Promise<{ error: string | null }> => {
@@ -47,8 +50,10 @@ export function useVisits(propertyId: string | null) {
       .from('visit_slots')
       .update({ status: 'Canceled by owner', updated_at: new Date().toISOString() })
       .eq('id', id)
-    if (!error) loadVisits()
-    return { error: error?.message ?? null }
+    if (error) return { error: error.message }
+    loadVisits()
+    callEdgeFunction('notify-visit', { visit_slot_id: id, action: 'Canceled by owner' })
+    return { error: null }
   }
 
   const requestReschedule = async (visit: VisitSlot): Promise<{ error: string | null }> => {
@@ -60,8 +65,10 @@ export function useVisits(propertyId: string | null) {
       .from('visit_slots')
       .update({ status: 'Canceled by owner', updated_at: new Date().toISOString() })
       .eq('id', visit.id)
-    if (!error) loadVisits()
-    return { error: error?.message ?? null }
+    if (error) return { error: error.message }
+    loadVisits()
+    callEdgeFunction('notify-visit', { visit_slot_id: visit.id, action: 'Canceled by owner' })
+    return { error: null }
   }
 
   return { pending, upcoming, loading, confirmVisit, cancelVisit, requestReschedule }
