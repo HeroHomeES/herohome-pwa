@@ -133,16 +133,16 @@ Nueva aplicación web (React + Vite + TypeScript + Tailwind + Supabase) para el 
 
 ### 9. NUEVO STATUS DE VISITA
 
-Se añade el status `completed` a visit_slots. Asignado automáticamente por el cron `complete-visits` cuando `end_time < now() AND status = 'confirmed'`.
+Se añade el status `Completed` a visit_slots. Asignado automáticamente por el cron `complete-visits` cuando `end_time < now() AND status = 'Confirmed'`.
 
-Lista completa de estados de visit_slots:
-- `available` — slot disponible para reserva
-- `pending_to_confirm` — PC ha solicitado, CV no ha confirmado
-- `confirmed` — CV ha confirmado la visita
-- `canceled_by_owner` — CV ha cancelado
-- `canceled_by_visitor` — PC ha cancelado
-- `not_available` — slot pasado no usado
-- `completed` — visita realizada (NUEVO v3.0)
+Lista completa de estados de visit_slots (valores exactos en BD, sin check constraint):
+- `Available` — slot disponible para reserva
+- `Pending to confirm` — PC ha solicitado, CV no ha confirmado
+- `Confirmed` — CV ha confirmado la visita
+- `Canceled by owner` — CV ha cancelado
+- `Canceled by visitor` — PC ha cancelado
+- `Not available` — slot pasado no usado
+- `Completed` — visita realizada (NUEVO v3.0)
 
 ---
 

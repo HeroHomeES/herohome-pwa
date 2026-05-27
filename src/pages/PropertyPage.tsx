@@ -3,7 +3,6 @@ import { useBlocker } from 'react-router-dom'
 import { useProperty } from '../hooks/useProperty'
 import { Toggle } from '../components/Toggle'
 import { Toast, useToast } from '../components/Toast'
-import { callEdgeFunction } from '../lib/edgeFunctions'
 import type { Property } from '../lib/types'
 
 // ─── Draft type (all inputs as strings for native inputs) ────────────────────
@@ -192,11 +191,6 @@ function PropertyForm({ property, saveProperty }: {
     } else {
       initialDraft.current = draft
       showToast('success', 'Cambios guardados correctamente')
-      const ok = await callEdgeFunction('update-property-to-sf', {
-        property_id: property.id,
-        ...updates,
-      })
-      if (!ok) showToast('info', 'Los cambios se sincronizarán con Salesforce en breve')
     }
   }
 

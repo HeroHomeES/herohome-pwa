@@ -3,7 +3,6 @@ import { useProperty } from '../hooks/useProperty'
 import { useOffers } from '../hooks/useOffers'
 import { Modal } from '../components/Modal'
 import { Toast, useToast } from '../components/Toast'
-import { callEdgeFunction } from '../lib/edgeFunctions'
 import type { Offer } from '../lib/types'
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -74,9 +73,6 @@ function CounterOfferModal({ offer, propertyId, onSubmit, onClose }: {
     setErr(null)
     setSubmitting(true)
     const { error } = await onSubmit(offer.id, num, propertyId)
-    if (!error) {
-      callEdgeFunction('update-offer-to-sf', { offer_id: offer.id, action: 'counter', counter_amount: num })
-    }
     setSubmitting(false)
     if (error) setErr(error)
     else onClose()
@@ -142,7 +138,6 @@ function OfferChain({ chain, propertyId, onAccept, onDeny, onCounter }: {
   const act = async (
     fn: () => Promise<{ error: string | null }>,
     successMsg: string,
-    sfFn?: () => Promise<boolean>
   ) => {
     setActioning(true)
     const { error } = await fn()
@@ -151,10 +146,6 @@ function OfferChain({ chain, propertyId, onAccept, onDeny, onCounter }: {
       showToast('error', error)
     } else {
       showToast('success', successMsg)
-      if (sfFn) {
-        const ok = await sfFn()
-        if (!ok) showToast('info', 'Los cambios se sincronizarán con Salesforce en breve')
-      }
     }
   }
 
@@ -200,22 +191,14 @@ function OfferChain({ chain, propertyId, onAccept, onDeny, onCounter }: {
             <div className="flex gap-2">
               <button
                 disabled={actioning}
-                onClick={() => act(
-                  () => onAccept(latest.id),
-                  'Oferta aceptada',
-                  () => callEdgeFunction('update-offer-to-sf', { offer_id: latest.id, action: 'accept' })
-                )}
+                onClick={() => act(() => onAccept(latest.id), 'Oferta aceptada')}
                 className="flex-1 bg-[#28A745] text-white text-sm font-semibold py-2.5 rounded-xl disabled:opacity-50 active:scale-95 transition-transform"
               >
                 Aceptar
               </button>
               <button
                 disabled={actioning}
-                onClick={() => act(
-                  () => onDeny(latest.id),
-                  'Oferta rechazada',
-                  () => callEdgeFunction('update-offer-to-sf', { offer_id: latest.id, action: 'deny' })
-                )}
+                onClick={() => act(() => onDeny(latest.id), 'Oferta rechazada')}
                 className="flex-1 border border-[#DC3545] text-[#DC3545] text-sm font-semibold py-2.5 rounded-xl disabled:opacity-50 active:scale-95 transition-transform"
               >
                 Rechazar

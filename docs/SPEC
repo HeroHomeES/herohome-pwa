@@ -82,7 +82,7 @@ Las Edge Functions se desarrollan por separado. Esta PWA solo consume la API de 
 | property_id | uuid | FK → properties.id, Non-nullable |
 | start_time | timestamptz | Non-nullable |
 | end_time | timestamptz | Non-nullable |
-| status | text | Nullable — Valores: available, pending_to_confirm, confirmed, canceled_by_owner, canceled_by_visitor, not_available |
+| status | text | Nullable — Valores: Available, Pending to confirm, Confirmed, Canceled by owner, Canceled by visitor, Not available, Completed |
 | visitor_name | text | Nullable |
 | visitor_last_name | text | Nullable |
 | visitor_phone | text | Nullable |
@@ -117,14 +117,14 @@ day_of_week: 0=Lunes, 1=Martes, ..., 6=Domingo. Horas completas (0-23).
 | Columna | Tipo | Constraints |
 |---------|------|-------------|
 | id | uuid | PK, Non-nullable |
-| salesforce_quote_id | text | Unique, Non-nullable |
+| salesforce_quote_id | text | Unique, Nullable — legacy, no se usa en v3.0 |
 | property_id | uuid | FK → properties.id, Non-nullable |
 | parent_offer_id | uuid | FK → offers.id, Nullable |
-| initiated_by | text | Non-nullable — Valores: buyer, seller |
+| initiated_by | text | Non-nullable — Valores: Buyer, Owner (check constraint en BD) |
 | buyer_name | text | Nullable |
 | buyer_phone | text | Nullable |
 | amount | numeric | Non-nullable — € |
-| status | text | Nullable — Valores: presented, accepted, denied |
+| status | text | Nullable — Valores: Presented, Accepted, Denied (check constraint en BD) |
 | created_at | timestamptz | Nullable |
 | updated_at | timestamptz | Nullable |
 
@@ -306,8 +306,8 @@ El CV puede editar los datos de su vivienda y guardarlos en Supabase.
    - Si intenta navegar sin guardar, mostrar confirmación
 
 ### Nota
-La sincronización con Salesforce (Edge Function update-property-to-sf) se integra en la Fase 7.
-En esta fase, solo se guarda en Supabase.
+No hay sincronización con Salesforce (v3.0). El guardado escribe solo en Supabase.
+Al confirmar/cancelar una visita, la PWA llamará a la Edge Function `notify-visit` (B5).
 
 ### Criterio de éxito
 - El CV puede editar cualquier campo y guardar
@@ -338,11 +338,11 @@ El CV puede configurar su disponibilidad, ver visitas pendientes y próximas.
 
 #### 4B: Visitas pendientes de confirmación
 1. Crear `src/hooks/useVisits.ts`:
-   - Query pendientes: `supabase.from('visit_slots').select('*').eq('property_id', propertyId).eq('status', 'pending_to_confirm').order('start_time')`
-   - Query confirmadas: `supabase.from('visit_slots').select('*').eq('property_id', propertyId).eq('status', 'confirmed').gte('start_time', new Date().toISOString()).order('start_time')`
+   - Query pendientes: `supabase.from('visit_slots').select('*').eq('property_id', propertyId).eq('status', 'Pending to confirm').order('start_time')`
+   - Query confirmadas: `supabase.from('visit_slots').select('*').eq('property_id', propertyId).eq('status', 'Confirmed').gte('start_time', new Date().toISOString()).order('start_time')`
 2. UI pendientes: tarjetas con fecha, hora, nombre del visitante. Dos botones:
-   - "Confirmar" → update status a `confirmed`
-   - "Cancelar" → update status a `canceled_by_owner`
+   - "Confirmar" → update status a `Confirmed`
+   - "Cancelar" → update status a `Canceled by owner`
 3. Tras confirmar o cancelar, refrescar la lista
 
 #### 4C: Próximas visitas
@@ -350,7 +350,7 @@ El CV puede configurar su disponibilidad, ver visitas pendientes y próximas.
 2. Cada tarjeta muestra: fecha, hora, nombre del visitante, teléfono (si disponible)
 3. Botón "Solicitar reagendar":
    - Validación: si start_time - now() < 24 horas → mostrar error "No se puede reagendar con menos de 24h de antelación"
-   - Si válido: update status a `canceled_by_owner`
+   - Si válido: update status a `Canceled by owner`
    - Toast de confirmación
 
 #### Tabs
@@ -376,22 +376,22 @@ El CV ve sus ofertas y puede aceptar, rechazar o contraofertar.
 3. UI: tarjetas de oferta, cada una con:
    - Importe (formateado: 250.000 €)
    - Nombre del comprador (buyer_name)
-   - Quién la inició (initiated_by: buyer → "Oferta del comprador", seller → "Tu contraoferta")
-   - Estado (presented → "Pendiente", accepted → "Aceptada", denied → "Rechazada")
+   - Quién la inició (initiated_by: Buyer → "Oferta del comprador", Owner → "Tu contraoferta")
+   - Estado (Presented → "Pendiente", Accepted → "Aceptada", Denied → "Rechazada")
    - Si parent_offer_id no es null, indicar "Ronda de negociación" (mostrar la cadena)
-4. Botones de acción (solo visibles si status = "presented" AND initiated_by = "buyer"):
-   - "Aceptar" → update status a `accepted`
-   - "Rechazar" → update status a `denied`
+4. Botones de acción (solo visibles si status = "Presented" AND initiated_by = "Buyer"):
+   - "Aceptar" → update status a `Accepted`
+   - "Rechazar" → update status a `Denied`
    - "Contraofertar" → abre modal con input numérico
 5. Modal de contraoferta:
    - Input numérico (sin decimales)
    - Validación: importe > 0
-   - Al enviar: crear nuevo registro en offers con initiated_by = "seller", parent_offer_id = oferta actual, status = "presented"
-   - Simultáneamente: update la oferta actual a status = "denied"
+   - Al enviar: crear nuevo registro en offers con initiated_by = "Owner", parent_offer_id = oferta actual, status = "Presented"
+   - Simultáneamente: update la oferta actual a status = "Denied"
 
 ### Nota
-La sincronización con Salesforce (Edge Functions sync-offer-from-sf y update-offer-to-sf)
-se integra en la Fase 7. En esta fase, solo se trabaja con Supabase.
+No hay sincronización con Salesforce (v3.0). Toda la lógica vive en Supabase.
+Al actuar sobre una oferta, la PWA llamará a la Edge Function `manage-offer` (B9).
 
 ### Criterio de éxito
 - Las ofertas se muestran correctamente agrupadas
@@ -466,30 +466,31 @@ para sincronización con Salesforce.
    - new_offer → /offers
    - visit_confirmed, visit_canceled → /calendar (tab próximas)
 
-#### 7B: Preparar integración con Edge Functions
-1. En PropertyPage, al guardar:
-   - Además del update en Supabase, hacer fetch a `update-property-to-sf`:
+#### 7B: Integración con Edge Functions v3.0
+1. En CalendarPage, al confirmar o cancelar una visita:
+   - Después del update en Supabase, llamar a `notify-visit`:
      ```
-     POST /functions/v1/update-property-to-sf
+     POST /functions/v1/notify-visit
      Headers: { Authorization: Bearer <session_token> }
-     Body: { property_id, ...changedFields }
+     Body: { visit_slot_id, action: "confirmed"|"canceled_by_owner" }
      ```
-   - Si la Edge Function falla, mostrar warning pero NO revertir el cambio en Supabase
-     (Supabase es fuente de verdad para la PWA, SF se sincroniza eventualmente)
+   - Si la Edge Function falla, no revertir el cambio en Supabase. La notificación
+     al PC llegará con retraso pero los datos son correctos.
 2. En OffersPage, al aceptar/rechazar/contraofertar:
-   - Además del update en Supabase, hacer fetch a `update-offer-to-sf`:
+   - Después del update en Supabase, llamar a `manage-offer`:
      ```
-     POST /functions/v1/update-offer-to-sf
+     POST /functions/v1/manage-offer
      Headers: { Authorization: Bearer <session_token> }
      Body: { offer_id, action: "accept"|"deny"|"counter", counter_amount?: number }
      ```
-   - Mismo patrón: si falla SF, warning pero no revertir
+   - Mismo patrón: si falla, no revertir.
+   - NUNCA llamar a update-offer-to-sf ni update-property-to-sf (eliminadas en v3.0).
 
 ### Criterio de éxito
 - Las notificaciones aparecen en tiempo real
 - El badge de conteo se actualiza
 - Pulsar una notificación navega a la sección correcta
-- Los fetch a Edge Functions están implementados con error handling graceful
+- Los fetch a notify-visit y manage-offer están implementados con error handling graceful
 - Si las Edge Functions no están desplegadas aún, la app sigue funcionando
 
 ---
