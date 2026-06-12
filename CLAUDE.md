@@ -2,12 +2,13 @@
 
 > Este archivo se carga automáticamente al inicio de cada sesión.
 > Actualizar al final de cada sesión y hacer push a GitHub.
+> **Arquitectura vigente: v3.1** — leer `ARCHITECTURE_V3_DECISIONS.md` antes de proponer funcionalidades o Edge Functions.
 
 ---
 
 ## Qué es Herohome
 
-Herohome es la primera agencia inmobiliaria 100% digital de España. Propietarios venden su vivienda asistidos por un agente IA llamado **Hero**. Comisión: 1% al vendedor + 1% al comprador. Web: herohome.es (Webflow).
+Herohome es la primera agencia inmobiliaria 100% digital de España. Propietarios venden su vivienda asistidos por un agente IA llamado **Hero**. Comisión: 1% al vendedor + 1% al comprador (pricing en revisión — bloque B13 del plan). Web corporativa: herohome.es (en migración de Webflow a Vercel).
 
 **Naming:** Herohome (nunca HeroHome ni HEROHOME). El agente IA se llama Hero (nunca "el bot" ni "la IA").
 
@@ -18,8 +19,8 @@ Herohome es la primera agencia inmobiliaria 100% digital de España. Propietario
 - **CV** (Cliente Vendedor): propietario con contrato. Accede a la PWA.
 - **PC** (Prospecto Comprador): interesado en comprar. Solo interactúa vía WhatsApp.
 - **PV** (Prospecto Vendedor): sin contrato. No accede a la PWA.
-- **Hero**: agente IA (GPT-4o). Dos instancias: Agente PWA (asiste al CV) y Agente WhatsApp (atiende al PC).
-- **Agente Herohome**: persona humana para tareas no automatizables. Usa el Dashboard de Operaciones.
+- **Hero**: agente IA (GPT-4o). Instancia activa: Agente WhatsApp (`whatsapp-agent`). El Agente PWA está aplazado (B10).
+- **Agente Herohome**: persona humana para tareas no automatizables. Opera con el Table Editor de Supabase + vistas SQL (el Dashboard completo está aplazado, B8).
 
 ---
 
@@ -28,64 +29,61 @@ Herohome es la primera agencia inmobiliaria 100% digital de España. Propietario
 | Capa | Tecnología |
 |------|-----------|
 | PWA Frontend (CV) | React 18 + Vite + TypeScript + Tailwind CSS — **este repo** |
-| Dashboard Operaciones | React + Vite + TS + Tailwind + Supabase Realtime — repo separado |
-| Backend / BD | Supabase (PostgreSQL + Auth + Edge Functions) |
-| CRM | Salesforce Enterprise + Docs Made Easy + Sign Made Easy |
-| Orquestación | Make.com + Supabase Cron |
-| Email CV | Edge Function + Resend |
-| Email PC | Make.com + Gmail (hola@herohome.es, DKIM/DMARC verificado) |
-| WhatsApp | WhatsApp Cloud API (Meta) |
-| IA | OpenAI GPT-4o via API |
+| Backend / BD / Lógica | Supabase (PostgreSQL + Auth + Edge Functions + Cron) |
+| Agente WhatsApp | Edge Function `whatsapp-agent` (GPT-4o, tool calling) |
+| CRM | Salesforce Enterprise + Docs/Sign Made Easy — **CONGELADO: no añadir nada** |
+| Email transaccional (CV y PC) | Resend desde Edge Functions (plantillas HTML en código) |
+| Make.com | SOLO: Esc. 1 (form web → Lead SF) y Esc. 2 (Gmail Idealista → Edge Function) |
+| WhatsApp | WhatsApp Cloud API (Meta) — webhook apunta a `whatsapp-agent` |
+| IA | OpenAI GPT-4o vía API |
 | Hosting | Vercel (auto-deploy desde GitHub) |
-| Web corporativa | Webflow (herohome.es) |
+| Dashboard Operaciones | APLAZADO (B8) — interim: Supabase Table Editor + vistas SQL |
 
 ---
 
-## Arquitectura v3.0 — Reglas fundamentales
+## Arquitectura v3.1 — Reglas que Claude Code DEBE respetar
 
-**Salesforce** = registro legal y contractual. **Supabase** = sistema operativo de la venta.
-
-Los datos fluyen SF → Supabase **una sola vez** (al crear usuario vía `create-user`). A partir de ahí Supabase es la fuente de verdad. **NO existen integraciones bidireccionales SF ↔ Supabase.**
-
-### Reglas que Claude Code DEBE respetar
-
-- **NO crear** Edge Functions de sincronización con Salesforce: `update-property-to-sf`, `update-offer-to-sf`, `confirm-visit-to-sf`, `sync-offer-from-sf` — pertenecen a v2.0 y están eliminadas.
-- **NO escribir** en `salesforce_event_id` (visit_slots) ni `salesforce_quote_id` (offers) — campos legacy nullable.
-- Notificaciones al PC: siempre vía webhook Make → Gmail. Nunca vía Salesforce Flows.
-- Email de bienvenida al CV: vía Edge Function + Resend (no Make).
+- **Salesforce está CONGELADO.** No crear campos, Flows ni Apex. Su único rol: Leads → Flow 1 (botón "Enviar acceso PWA") → contratos/firma.
+- **NO crear** Edge Functions de sync con Salesforce (`update-property-to-sf`, `update-offer-to-sf`, `confirm-visit-to-sf`, `sync-offer-from-sf`) — eliminadas en v3.0.
+- **NO escribir** en `salesforce_event_id` (visit_slots) ni `salesforce_quote_id` (offers) — legacy nullable.
+- **Todo email sale por Resend** desde Edge Functions. Los webhooks a Make para notificaciones están ELIMINADOS (Escenarios 3-6 de Make no existen en v3.1).
+- El agente de WhatsApp vive en `whatsapp-agent` (Edge Function), NO en Make. Validar firma HMAC de Meta en cada POST.
+- **NO construir** B8 (Dashboard), B10 (chat Hero PWA) ni B11 (post-visita) hasta el post-lanzamiento.
+- DNI del PC: se pide en `create_offer`, no antes de la visita.
+- Parsing de Idealista: LLM con salida JSON + alerta de fallo. Nunca regex.
 - UI en **español**. Mobile-first (375px primero).
-- Diseño: Inter como fuente. Color primario **#5B5CFF**. Sin box-shadows (usar bordes). Estética Stripe/Linear.
-- Leer `ARCHITECTURE_V3_DECISIONS.md` antes de proponer funcionalidades o Edge Functions.
+- Diseño: Inter como fuente. Color primario **#5B5CFF**. Sin box-shadows (usar bordes). Estética Stripe/Linear. Ver DESIGN.md.
 
 ---
 
 ## Supabase
 
-- **URL:** `https://zqkvcphtqmibttgnivku.supabase.co`
+- **URL:** `https://zqkvcphtqmibttgnivku.supabase.co` — **ES PRODUCCIÓN, no hay staging**
 - **Anon key:** en `.env` como `VITE_SUPABASE_ANON_KEY`
 - **Auth:** Magic Link (email). Sesiones de 7 días.
 - **RLS:** activado. Cada usuario solo ve sus propios datos.
 - NUNCA usar la Service Role Key en el cliente.
+- **MCP de Supabase conectado en Claude Code** (read-only, scoped a este proyecto): usarlo para leer esquema, datos y razonar sobre RLS. Las escrituras (migraciones, crons) se entregan como SQL para aplicación manual, salvo instrucción explícita del usuario.
 
-### Valores de status en BD (verificados con check constraints)
+### Valores de status en BD (verificados contra la BD — PascalCase)
 
-**`visit_slots.status`** (sin check constraint — valores reales usados por Edge Functions):
+**`visit_slots.status`** (sin check constraint):
 `Available` | `Pending to confirm` | `Confirmed` | `Canceled by owner` | `Canceled by visitor` | `Not available` | `Completed`
 
-**`offers.status`** (check constraint en BD):
-`Presented` | `Accepted` | `Denied`
+**`offers.status`** (check constraint): `Presented` | `Accepted` | `Denied`
 
-**`offers.initiated_by`** (check constraint en BD):
-`Buyer` | `Owner`
+**`offers.initiated_by`** (check constraint): `Buyer` | `Owner`
+
+> ⚠️ Cualquier documento que liste estos valores en minúsculas/snake_case es obsoleto.
 
 ---
 
 ## Deploy — Pipeline automático
 
-- **PWA:** push a GitHub → Vercel redespliega automáticamente
-- **Edge Functions:** push a GitHub → GitHub Actions redespliega automáticamente (`.github/workflows/deploy.yml`)
-- **Supabase CLI:** instalada y vinculada al proyecto (`supabase link`)
-- **Para desplegar manualmente:** `supabase functions deploy <nombre-función>`
+- **PWA:** push a GitHub → Vercel redespliega automáticamente.
+- **Edge Functions:** push a `main` con cambios en `supabase/functions/**` → GitHub Action (`.github/workflows/deploy.yml`) ejecuta `supabase functions deploy`. Secrets del repo: `SUPABASE_ACCESS_TOKEN`, `SUPABASE_PROJECT_ID`.
+- **Pendiente técnico:** revisar `config.toml` de las funciones que se invocan con `x-api-key` para fijar `verify_jwt = false` (que el deploy automático no reactive la verificación JWT).
+- **Deploy manual (fallback):** `supabase functions deploy <nombre-función>`
 
 ---
 
@@ -126,118 +124,94 @@ src/
 
 | Función | Trigger | Estado |
 |---------|---------|--------|
-| `create-user` | HTTP POST desde Salesforce Flow 1 | ✅ Completada + mejorada |
-| `send-welcome-email` | Llamada interna desde create-user | ✅ Completada |
-| `generate-slots` | Cron día 20 de cada mes + manual | ✅ Completada |
+| `create-user` | HTTP POST desde Salesforce Flow 1 | ✅ Completada |
+| `send-welcome-email` | Interna desde create-user | ✅ Completada |
+| `generate-slots` | Cron día 20 + manual | ✅ Completada |
 | `cleanup-slots` | Cron diario 02:00 | ✅ Completada |
-| `get-available-slots` | HTTP GET desde Agente WhatsApp | ✅ Completada |
-| `request-visit-slot` | HTTP POST desde Agente WhatsApp | ✅ Completada |
-| `get-conversation-history` | HTTP GET desde Agente IA | ✅ Completada |
-| `save-message` | HTTP POST desde Agente IA | ✅ Completada |
-| `notify-visit` | HTTP POST desde PWA (CV confirma/cancela visita) | ✅ Completada |
-| `complete-visits` | Cron diario 23:00 | ⬜ Pendiente (B11) |
-| `cancel-visit-by-visitor` | HTTP POST desde Make (WhatsApp) | ⬜ Pendiente (B6) |
+| `get-available-slots` | Tool de whatsapp-agent | ✅ Completada |
+| `request-visit-slot` | Tool de whatsapp-agent | ✅ Completada |
+| `get-conversation-history` | Interna desde whatsapp-agent | ✅ Completada |
+| `save-message` | Interna desde whatsapp-agent | ✅ Completada |
+| `notify-visit` | HTTP POST desde PWA | 🔄 REESCRIBIR (B5): Resend + WhatsApp directo, sin Make |
+| `whatsapp-agent` | Webhook de Meta (GET + POST con HMAC) | ⬜ NUEVA (B5) ← **PRÓXIMO PASO** |
+| `process-idealista-lead` | HTTP POST desde Make Esc. 2 | ⬜ NUEVA (B5) |
+| `cancel-visit-by-visitor` | Tool de whatsapp-agent | ⬜ Pendiente (B6) |
 | `visit-reminders` | Cron diario 09:00 | ⬜ Pendiente (B7) |
-| `manage-offer` | HTTP POST desde PWA (acción del CV sobre oferta) | ⬜ Pendiente (B9) |
-| `create-offer` | HTTP POST desde Agente WhatsApp vía Make | ⬜ Pendiente (B9) |
-| `chat-with-hero` | HTTP POST desde PWA | ⬜ Pendiente (B10) |
+| `manage-offer` | HTTP POST desde PWA | ⬜ Pendiente (B9) |
+| `create-offer` | Tool de whatsapp-agent (gate de honorarios) | ⬜ Pendiente (B9) |
+| `complete-visits` | Cron diario 23:00 | ⬜ Aplazado (B11) — verificar si el cron ya existe |
+| `chat-with-hero` | HTTP POST desde PWA | ⏸️ Aplazada (B10, post-lanzamiento) |
 
-### Variables de entorno en Supabase (secrets)
-- `RESEND_API_KEY` — para send-welcome-email
-- `PWA_BASE_URL` — URL de la PWA para redirect del Magic Link (`https://app.herohome.es`)
-- `MAKE_WEBHOOK_NOTIFY_VISIT` — webhook Make Escenario 3 (visitas)
+### Secrets de Supabase (estado objetivo v3.1)
+- `RESEND_API_KEY` (pendiente rotación, B12)
+- `PWA_BASE_URL` (`https://app.herohome.es`)
+- `OPENAI_API_KEY` — NUEVO (whatsapp-agent)
+- `META_APP_SECRET` — NUEVO (validación HMAC)
+- `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID` — envío Cloud API
+- ~~`MAKE_WEBHOOK_NOTIFY_VISIT`~~ — ELIMINAR al reescribir notify-visit
 
 ---
 
-## Make.com — Escenarios
+## Make.com — Escenarios (v3.1)
 
 | # | Escenario | Estado |
 |---|-----------|--------|
-| 1 | Formulario Web → Lead en Salesforce | ✅ Activo |
-| 2 | Email Idealista → WhatsApp al PC | ⬜ Pendiente (B5) |
-| 3 | Notificación visita al PC → Gmail | ✅ Activo |
-| 4 | Recordatorio visita 24h → Gmail | ⬜ Pendiente (B7) |
-| 5 | Decisión oferta al PC → Gmail | ⬜ Pendiente (B9) |
-| 6 | Post-visita feedback → Gmail + WhatsApp | ⬜ Pendiente (B11) |
+| 1 | Formulario web → Lead en Salesforce | ✅ Activo |
+| 2 | Gmail Watch (Idealista) → HTTP a process-idealista-lead (2 módulos) | 🔄 Reconfigurar (B5) |
+| 3-6 | Notificaciones vía Gmail | ❌ ELIMINADOS en v3.1 (Esc. 3 activo: desactivar al desplegar notify-visit v3.1) |
+| — | Webhook WhatsApp entrante en Make | ❌ ELIMINADO: el webhook de Meta apunta a whatsapp-agent |
 
 ---
 
-## Estado del proyecto (actualizado 28 mayo 2026)
+## Estado del proyecto (actualizado 12 junio 2026 — plan v3.1)
 
-**B0 — Fundamentos: 🔄 EN CURSO**
-- ✅ Tablas Supabase, RLS, Auth, GitHub, Named Credentials SF, DPA OpenAI.
-- 🔄 WhatsApp Cloud API y webhook — en curso.
+**B0-B4 — Fundamentos, Activación CV, PWA, Edición, Slots: ✅ COMPLETADOS**
+- Pendiente menor (B2): bug del route guard del Magic Link (timing onAuthStateChange) — 🔄 en curso.
 
-**B1 — Activación CV: ✅ COMPLETADO**
+**B5 — Agente WhatsApp + Visitas: 🔄 EN CURSO** ← **CAMINO CRÍTICO**
+- ✅ Edge Functions de soporte (slots, historial, mensajes). PWA: visitas pendientes + próximas + reagendar.
+- ⬜ Edge Function `whatsapp-agent` (webhook Meta + HMAC + loop GPT-4o + tools) — **siguiente tarea de Claude Code**.
+- ⬜ Edge Function `process-idealista-lead` (parsing LLM).
+- ⬜ Reescribir `notify-visit` (Resend + WhatsApp directo).
+- ⬜ Plantillas WhatsApp en Meta (aprobación externa, en paralelo) + plantillas email en código.
+- ⬜ Reapuntar webhook de Meta a la Edge Function. Reconfigurar Make Esc. 2. Validación end-to-end.
 
-**B2 — PWA Esqueleto: ✅ COMPLETADO**
-- ✅ Proyecto Vite + React + TS + Tailwind.
-- ✅ Magic Link, Layout, Mi Vivienda (lectura), Service Worker.
-- ✅ Deploy en Vercel con `vercel.json` (fix rutas SPA).
-- ✅ GitHub Actions para deploy automático de Edge Functions.
+**B6 — Reagendado PC: ⬜ PENDIENTE** (tools sobre whatsapp-agent)
+**B7 — Reagendado CV + Recordatorios: ⬜ PENDIENTE** (visit-reminders con Resend directo)
+**B9 — Gestión de Ofertas: ⬜ PENDIENTE** (manage-offer + tool create_offer con gate de honorarios; bloqueado parcialmente por decisión legal B13)
+**B12 — QA y Lanzamiento: ⬜ PENDIENTE** (RLS, rotación de secrets, pen test incl. HMAC, monitoring)
 
-**B3 — Mi Vivienda Edición: ✅ COMPLETADO**
+**B13 — Negocio y Legal: 🔄 EN CURSO (paralelo, no técnico)**
+- Revisión pricing "primera venta gratis" · contrato reconocimiento honorarios comprador (abogado) · momento de firma · plan de captación.
 
-**B4 — Disponibilidad y Slots: ✅ COMPLETADO**
+**B14 — Infraestructura de desarrollo: ✅ COMPLETADO (12 junio 2026)**
+- ✅ Supabase MCP conectado en Claude Code (read-only, scoped al proyecto).
+- ✅ GitHub Action de deploy verificado + filtro `paths` añadido. Secrets limpiados.
+- ✅ CLAUDE.md y ARCHITECTURE_V3_DECISIONS.md actualizados a v3.1.
 
-**B5 — Agente WhatsApp + Visitas: 🔄 EN CURSO**
-- ✅ Edge Functions: get-available-slots, request-visit-slot, get-conversation-history, save-message.
-- ✅ PWA: sección Visitas pendientes (Confirmar/Cancelar) + Próximas visitas + Reagendar.
-- ✅ Edge Function notify-visit desplegada y conectada desde useVisits.ts.
-- ✅ Make Escenario 3 activo (email al PC al confirmar/cancelar visita).
-- ⬜ Make Escenario 2 (Idealista → WhatsApp) — pendiente junior.
-- ⬜ Agente GPT-4o en Make + flujo RGPD — pendiente.
-- ⬜ Validación end-to-end completa.
-
-**B6 — Reagendado PC: ⬜ PENDIENTE**
-
-**B7 — Reagendado CV + Recordatorios: ⬜ PENDIENTE**
-- ✅ PWA: sección Próximas visitas con botón Reagendar + validación 24h (ya implementado en B5).
-- ⬜ Edge Function visit-reminders + Make Escenario 4.
-
-**B8 — Dashboard Operaciones: ⬜ PENDIENTE**
-
-**B9 — Gestión de Ofertas: ⬜ PENDIENTE** ← **PRÓXIMO PASO**
-- ✅ PWA: pantalla Mis Ofertas con Aceptar/Rechazar/Contraofertar (ya implementado).
-- ⬜ Edge Function manage-offer + Make Escenario 5.
-- ⬜ Tool create_offer en agente WhatsApp.
-
-**B10 — Agente Hero PWA: ⬜ PENDIENTE**
-- ✅ Componente chat + historial persistente (ya implementado).
-- ⬜ Edge Function chat-with-hero.
-
-**B11 — Post-visita y Feedback: ⬜ PENDIENTE**
-
-**B12 — QA y Lanzamiento: ⬜ PENDIENTE**
+**APLAZADOS POST-LANZAMIENTO: B8 (Dashboard) · B10 (chat Hero PWA) · B11 (post-visita)**
+- Única tarea B8 viva en Fase 1: crear 3-4 vistas SQL guardadas para operación manual.
 
 ---
 
-## Correcciones aplicadas en sesión 28 mayo 2026
+## Registro de sesiones
 
+### 12 junio 2026 — Migración a plan v3.1
+- Decisión arquitectónica v3.1: agente WhatsApp en Edge Function (no Make); Resend único canal email (Escenarios Make 3-6 eliminados); Salesforce congelado; B8/B10/B11 aplazados; parsing Idealista con LLM.
+- B14 completado: Supabase MCP (read-only) + GitHub Action con filtro paths + docs actualizados.
+- Eliminado `CLAUDEinstructions.md` (contenido duplicado y status values obsoletos en minúsculas — fuente de bugs).
+
+### 28 mayo 2026
 - Eliminadas llamadas prohibidas a `update-property-to-sf` y `update-offer-to-sf` (v2.0).
-- SPEC y ARCHITECTURE actualizados con valores reales de BD (PascalCase en status).
-- `vercel.json` creado (fix 404 en rutas directas de la SPA).
-- `create-user` renombrado desde `create-user-and-property`, código sincronizado con producción, INSERT → upsert.
-- GitHub Actions configurado (deploy automático Edge Functions en cada push).
-- `notify-visit` Edge Function creada, desplegada y conectada desde `useVisits.ts`.
-- Make Escenario 3 configurado y activo.
-
----
-
-## Tareas completadas fuera de Claude Code
-
-1. Configuración Supabase (tablas, RLS, Auth) — via Supabase Dashboard.
-2. Configuración Salesforce (campos custom, Named Credentials, Connected App, Flow 1) — via SF UI.
-3. Supabase Cron (generate-slots día 20 + cleanup-slots diario) — SQL en Supabase SQL Editor.
-4. Decisión arquitectónica v3.0 — eliminación integraciones bidireccionales SF ↔ Supabase.
-5. Migración de Lovable a Claude Code.
-6. Diseño visual (DESIGN.md) — sistema de diseño en Google Drive.
+- `vercel.json` creado (fix 404 SPA). `create-user` renombrado y sincronizado con producción.
+- GitHub Actions de deploy configurado. `notify-visit` creada (versión Make, a reescribir en v3.1).
 
 ---
 
 ## Documentos de referencia
 
-- `ARCHITECTURE_V3_DECISIONS.md` — decisiones arquitectónicas v3.0 (en este repo).
-- `docs/SPEC` — especificación técnica completa (en este repo).
-- Plan de tareas v3.0 — Google Sheets (55 tareas): https://docs.google.com/spreadsheets/d/1YnsJeD4oQZI4A1T2-hNWZJidYlDFjdqQ/edit
-- Arquitectura Técnica v3.0, DESIGN.md, modelos de datos — Google Drive.
+- `ARCHITECTURE_V3_DECISIONS.md` — decisiones arquitectónicas v3.1 (en este repo, AUTORITATIVO).
+- `docs/SPEC.md` — especificación técnica (revisar contra v3.1 antes de usar).
+- **Plan de tareas v3.1** — Google Sheets (hojas: Plan v3.1 / Cambios v3.0→v3.1 / Camino crítico / Resumen).
+- DESIGN.md, Arquitectura Técnica, modelos de datos — Google Drive.
+
