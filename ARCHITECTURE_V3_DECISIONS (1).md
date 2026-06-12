@@ -1,188 +1,184 @@
 # ARCHITECTURE_V3_DECISIONS.md
 
 > **Este archivo es la referencia autoritativa para Claude Code.**
-> La arquitectura vigente es la **v3.0**. Cualquier referencia en el código, comentarios o documentación a Edge Functions, Salesforce Flows o integraciones que aparezcan como "ELIMINADAS" en este documento debe ignorarse o eliminarse.
+> La arquitectura vigente es la **v3.1** (12 junio 2026). Cualquier referencia en el código, comentarios o documentación a Edge Functions, Salesforce Flows, escenarios de Make o integraciones que aparezcan como "ELIMINADAS" en este documento debe ignorarse o eliminarse.
+> La v3.1 no cambia el principio de la v3.0 (Supabase como sistema operativo); cambia **dónde vive el agente de WhatsApp** (Edge Function, no Make) y **por dónde salen los emails** (Resend, no Gmail vía Make).
 
 ---
 
-## Principio arquitectónico v3.0
+## Principios arquitectónicos v3.1
 
-**Salesforce es el sistema de registro legal y contractual. Supabase es el sistema operativo de la venta.**
-
-Los datos fluyen de Salesforce a Supabase **una sola vez** (al crear el usuario y la propiedad mediante el Flow 1 + Edge Function `create-user-and-property`). A partir de ese momento, Supabase es la fuente de verdad para todo lo operativo: visitas, ofertas, ediciones de propiedad, conversaciones y notificaciones.
-
-No existen integraciones bidireccionales entre Supabase y Salesforce. El flujo es unidireccional: SF → Supabase (solo en la activación del CV).
+1. **Salesforce es el sistema de registro legal y contractual — y está CONGELADO.** Ninguna funcionalidad nueva entra en Salesforce. Su rol queda limitado a: Leads → conversión → botón "Enviar acceso PWA" (Flow 1) → contratos y firma (Docs/Sign Made Easy). Criterio de diseño para cualquier propuesta: *"¿podría borrarse Salesforce en 2027 sin reescribir nada más?"* Si la respuesta es no, la propuesta es incorrecta.
+2. **Supabase es el sistema operativo de la venta.** Fuente de verdad para visitas, ofertas, propiedades (operativo), conversaciones, notificaciones y consentimientos. Los datos fluyen SF → Supabase **una sola vez** (Flow 1 → `create-user`). No existen integraciones bidireccionales.
+3. **Toda la lógica de negocio vive en Edge Functions.** Incluido el agente conversacional de WhatsApp. La PWA solo hace fetch.
+4. **Resend es el único canal de email transaccional** (CV y PC). Las plantillas HTML viven en el código de las Edge Functions.
+5. **Make queda reducido a lo insustituible:** el trigger de Gmail para los emails de Idealista (Escenario 2) y el formulario web → Lead SF (Escenario 1). Nada más.
 
 ---
 
-## Cambios de v2.0 a v3.0
+## Cambios de v3.0 a v3.1
 
-### 1. EDGE FUNCTIONS ELIMINADAS — NO DESARROLLAR
+### 1. AGENTE WHATSAPP — Vive en una Edge Function, NO en Make
 
-Estas Edge Functions estaban planificadas en v2.0 y **no deben crearse**:
+**v3.0 (OBSOLETO):** webhook de Meta → Make → escenario con agente GPT-4o → Edge Functions.
 
-| Edge Function | Qué hacía en v2.0 | Por qué se elimina |
-|---|---|---|
-| `confirm-visit-to-sf` | Al confirmar visita en PWA, creaba un Event en Salesforce | El agente humano ve visitas en el Dashboard, no en SF |
-| `update-offer-to-sf` | Al aceptar/rechazar/contraofertar, actualizaba la Quote en Salesforce | Las ofertas viven solo en Supabase |
-| `sync-offer-from-sf` | Recibía Quotes creadas en SF y las insertaba en tabla offers de Supabase | Las ofertas se crean directamente en Supabase |
-| `update-property-to-sf` | Al editar vivienda en PWA, sincronizaba cambios al Account de Salesforce | El agente ve cambios en el Dashboard y actualiza portales manualmente |
+**v3.1 (VIGENTE):**
 
-**Si en el código encuentras imports, referencias, stubs o TODOs relacionados con estas funciones, elimínalos.**
-
-### 2. SALESFORCE FLOWS ELIMINADOS
-
-| Flow | Qué hacía en v2.0 | Estado en v3.0 |
-|---|---|---|
-| Flow 1 (botón "Enviar acceso PWA") | HTTP Callout a `create-user-and-property` | **SE MANTIENE** — único punto de integración SF → Supabase |
-| Flow 2 (Quote sync a Supabase) | Cuando se creaba/modificaba una Quote en SF, hacía HTTP Callout para sincronizar a tabla offers | **ELIMINADO** — las ofertas se crean directamente en Supabase |
-| Flow 3 (Notificar decisión del CV) | Cuando el CV aceptaba/rechazaba en PWA, el update viajaba a SF y un Flow disparaba Make para notificar al PC | **ELIMINADO** — la Edge Function `manage-offer` llama directamente a un webhook de Make |
-
-### 3. OFERTAS — Flujo completamente rediseñado
-
-**v2.0 (OBSOLETO):**
 ```
-PC hace oferta vía WhatsApp
-  → Agente WA → create_offer → crea Quote en Salesforce
-    → SF Flow 2 sincroniza Quote a tabla offers de Supabase
-      → PWA del CV muestra la oferta
-
-CV acepta/rechaza/contraoferta en PWA
-  → Edge Function update-offer-to-sf → actualiza Quote en SF
-    → SF Flow 3 → Make Escenario 5 → email al PC
+Webhook de Meta (mensajes entrantes WhatsApp)
+  → Edge Function whatsapp-agent
+      1. GET: responde al hub.challenge de verificación de Meta
+      2. POST: valida firma HMAC X-Hub-Signature-256 (META_APP_SECRET)
+      3. Recupera historial (get-conversation-history / tabla whatsapp_conversations)
+      4. Loop de tool calling con GPT-4o
+      5. Tools v1: get_available_slots, request_visit
+         Tools v2 (B6/B9): cancel_visit_by_visitor, create_offer
+      6. Persiste mensajes (save-message)
+      7. Responde al PC vía WhatsApp Cloud API
 ```
 
-**v3.0 (VIGENTE):**
-```
-PC hace oferta vía WhatsApp
-  → Agente WA → Edge Function create-offer → INSERT en tabla offers de Supabase
-    → Se crea notification para el CV
-      → PWA del CV muestra la oferta
+Razones: Make no tiene bucle nativo de tool calling; consume 5-10 operaciones por mensaje; no permite validar la firma HMAC de Meta (endpoint falsificable); el código es testeable y mantenible por Claude Code, la GUI de Make no.
 
-CV acepta/rechaza/contraoferta en PWA
-  → Edge Function manage-offer:
-    - Acepta: offers.status = 'accepted'
-    - Rechaza: offers.status = 'denied'
-    - Contraoferta: offers.status = 'denied' + INSERT nueva oferta con initiated_by = 'seller'
-  → Misma Edge Function llama webhook de Make
-    → Make envía email al PC vía Gmail
-```
+**El escenario de Make que recibía el webhook de WhatsApp queda DESACTIVADO.** Si encuentras referencias a "agente en Make", elimínalas.
 
-**Implicaciones para el código:**
-- La tabla `offers` es la fuente de verdad única. El campo `salesforce_quote_id` es **nullable** y no se usa en v3.0.
-- La tool `create_offer` del agente WhatsApp crea la oferta en Supabase (no en SF). El parámetro es `property_id` (no `account_id`).
-- La PWA muestra ofertas con lectura Y escritura (aceptar, rechazar, contraofertar).
-- No existe sincronización con Salesforce Quote en ninguna dirección.
+### 2. EMAILS — Resend para todo, Make/Gmail eliminado
 
-### 4. VISITAS — Sin sincronización con Salesforce
-
-**v2.0:** Al confirmar una visita, se creaba un Event en Salesforce para que el agente lo viera en su calendario.
-
-**v3.0:** La visita vive solo en `visit_slots` de Supabase. Al confirmar:
-- Edge Function `notify-visit` llama a un webhook de Make
-- Make envía WhatsApp + email de confirmación al PC vía Gmail
-- El Dashboard del agente se actualiza en tiempo real (Supabase Realtime)
-- **No se crea Event en Salesforce**
-
-El campo `salesforce_event_id` en la tabla `visit_slots` es **legacy y no se usa**. No escribir en él.
-
-### 5. EDICIÓN DE PROPIEDAD — Sin sincronización con Salesforce
-
-**v2.0:** El botón "Guardar" en Mi Vivienda actualizaba Supabase y luego llamaba a `update-property-to-sf` para sincronizar al Account de SF.
-
-**v3.0:** El botón "Guardar" actualiza solo Supabase (`properties` + `updated_at`). No hay sincronización automática a Salesforce. El agente humano ve los cambios en el Dashboard (comparando `updated_at` vs `sf_last_sync_at`).
-
-### 6. EMAILS OPERATIVOS — Nuevo routing
-
-| Tipo de email | Destinatario | v2.0 | v3.0 |
+| Tipo de email | Destinatario | v3.0 (OBSOLETO) | v3.1 (VIGENTE) |
 |---|---|---|---|
-| Bienvenida + Magic Link | CV | Edge Function + Resend | **Sin cambios** — Edge Function + Resend |
-| Confirmación de visita | PC | Dependía de Event en SF → Make | **Edge Function notify-visit → webhook Make → Gmail** |
-| Recordatorio 24h | CV + PC | No existía | **NUEVO: Cron Supabase → Edge Function visit-reminders → webhook Make → Gmail** |
-| Decisión sobre oferta | PC | SF Flow 3 → Make → Gmail | **Edge Function manage-offer → webhook Make → Gmail** |
-| Post-visita / Feedback | PC | Sin cambios relevantes | **Cron Supabase → Edge Function complete-visits → webhook Make → Gmail + WhatsApp** |
+| Bienvenida + Magic Link | CV | Edge Function + Resend | Sin cambios |
+| Confirmación/cancelación visita | PC | notify-visit → webhook Make → Gmail | **notify-visit → Resend + WhatsApp Cloud API directo** |
+| Recordatorio 24h | CV + PC | visit-reminders → webhook Make → Gmail | **visit-reminders → Resend directo** |
+| Decisión sobre oferta | PC | manage-offer → webhook Make → Gmail | **manage-offer → Resend + WhatsApp directo** |
+| Post-visita / feedback | PC | complete-visits → webhook Make → Gmail | **APLAZADO post-lanzamiento (B11)** |
 
-Regla general: todos los emails al PC salen por **Make + Gmail** (hola@herohome.es con DKIM/DMARC). El email de bienvenida al CV sale por **Edge Function + Resend**.
+- Los **Escenarios 3, 4, 5 y 6 de Make están ELIMINADOS**. El Escenario 3 (activo en v3.0) se desactiva cuando se despliegue `notify-visit` v3.1.
+- El secret `MAKE_WEBHOOK_NOTIFY_VISIT` queda obsoleto tras la reescritura de `notify-visit`: eliminarlo.
+- Las plantillas HTML de email viven embebidas en el código (branding según DESIGN.md), no en Make.
 
-### 7. NUEVAS EDGE FUNCTIONS (v3.0)
+### 3. LEADS DE IDEALISTA — Parsing con LLM, no regex
 
-Estas funciones son nuevas y deben desarrollarse:
+**v3.1 (VIGENTE):**
 
-| Edge Function | Trigger | Qué hace |
+```
+Email de Idealista llega a Gmail
+  → Make Escenario 2 (SOLO 2 módulos): Gmail Watch → HTTP POST
+    → Edge Function process-idealista-lead
+        1. Extrae teléfono/nombre/referencia con LLM barato (salida JSON estructurada)
+        2. Lookup de la propiedad en Supabase
+        3. Envía plantilla WhatsApp de bienvenida al PC
+        4. Si la extracción falla → email de alerta (Resend) al agente Herohome
+```
+
+No usar regex para el parsing: Idealista cambia plantillas sin avisar y los regex se rompen en silencio. La alerta de fallo es obligatoria.
+
+### 4. SALESFORCE — Congelado (refuerza v3.0)
+
+Se mantienen las eliminaciones de v3.0 (sin Events, sin Quotes, sin sync de propiedad) y se añade: **no desarrollar nada nuevo en Salesforce** — ni campos, ni Flows, ni Apex. Lo que existe se mantiene; lo que falta se construye en Supabase. En Fase 2 se evaluará migrar onboarding y firma fuera de SF.
+
+### 5. ALCANCE FASE 1 — Camino crítico a la primera transacción
+
+**Secuencia:** B5 (agente + visitas) → B6/B7 (reagendados + recordatorios) → B9 (ofertas) → B12 (QA y lanzamiento).
+
+**APLAZADO post-lanzamiento — NO desarrollar hasta tener operaciones reales:**
+
+| Bloque | Componente | Interim |
 |---|---|---|
-| `notify-visit` | HTTP POST desde PWA (CV confirma/cancela) | Llama webhook de Make para notificar al PC |
-| `manage-offer` | HTTP POST desde PWA (CV acepta/rechaza/contraoferta) | Actualiza offers en Supabase + llama webhook de Make |
-| `create-offer` | HTTP POST desde Agente WhatsApp (vía Make) | Crea registro en tabla offers + notification para CV |
-| `visit-reminders` | Scheduled (cron diario, 09:00) | Consulta visitas confirmadas para mañana, llama webhook de Make |
-| `complete-visits` | Scheduled (cron diario, 23:00) | Marca como completed los slots con end_time < now() AND status=confirmed |
+| B8 | Dashboard de Operaciones (app completa) | Table Editor de Supabase + 3-4 vistas SQL guardadas |
+| B10 | Chat Hero en la PWA | El CV contacta por teléfono/email. `chat-with-hero` se reaprovechará. |
+| B11 | Feedback post-visita al PC | Ninguno |
 
-### 8. DASHBOARD DE OPERACIONES — Nuevo componente
+### 6. DNI DEL PC — Se captura en la oferta, no antes de la visita
 
-Nueva aplicación web (React + Vite + TypeScript + Tailwind + Supabase) para el agente humano de Herohome. Desplegada en Vercel (admin.herohome.es).
+El flujo RGPD del agente de WhatsApp pide consentimiento de privacidad al inicio, pero el DNI **solo se solicita en el momento de formalizar una oferta** (tool `create_offer`), no antes de la visita. Reduce fricción del funnel. La tool `create_offer` incluye además un gate: no se registra oferta sin el reconocimiento de honorarios del comprador firmado (definición legal en curso, bloque B13 del plan).
 
-**Autenticación:** usuario admin en Supabase Auth con `role: "admin"` en user_metadata. Políticas RLS con SELECT en tablas operativas para role = admin.
+### 7. OFERTAS Y VISITAS — Sin cambios de fondo respecto a v3.0
 
-**Pantallas:**
-- Panel principal: resumen KPIs + alertas en tiempo real
-- Viviendas: listado con indicador de "campos modificados" (updated_at > sf_last_sync_at)
-- Visitas: vista calendario + lista filtrable por estado
-- Ofertas: cadena de negociación visual (usando parent_offer_id)
-- Conversaciones WhatsApp: solo lectura
+- `offers` y `visit_slots` en Supabase son la única fuente de verdad. Sin Quotes ni Events en SF.
+- `salesforce_quote_id` y `salesforce_event_id` son legacy nullable: no escribir en ellos.
+- `create_offer` pasa de ser "Edge Function llamada desde Make" a ser **tool del loop de whatsapp-agent** (puede implementarse como módulo interno o función separada invocada por el agente).
+- manage-offer: misma lógica v3.0 (accepted / denied / contraoferta con nueva fila e initiated_by = 'Owner'), pero notifica por Resend + WhatsApp directamente.
 
-**Supabase Realtime** para actualizar automáticamente cuando cambian visit_slots, offers o properties.
+### 8. INFRAESTRUCTURA DE DESARROLLO (B14 — completado 12 junio 2026)
 
-### 9. NUEVO STATUS DE VISITA
-
-Se añade el status `Completed` a visit_slots. Asignado automáticamente por el cron `complete-visits` cuando `end_time < now() AND status = 'Confirmed'`.
-
-Lista completa de estados de visit_slots (valores exactos en BD, sin check constraint):
-- `Available` — slot disponible para reserva
-- `Pending to confirm` — PC ha solicitado, CV no ha confirmado
-- `Confirmed` — CV ha confirmado la visita
-- `Canceled by owner` — CV ha cancelado
-- `Canceled by visitor` — PC ha cancelado
-- `Not available` — slot pasado no usado
-- `Completed` — visita realizada (NUEVO v3.0)
+- **Supabase MCP conectado en Claude Code** (servidor remoto `mcp.supabase.com`, scoped a `project_ref=zqkvcphtqmibttgnivku`, **read_only=true**). Claude Code puede leer esquema y datos. Las escrituras (migraciones, crons) se generan como SQL y las aplica el humano, salvo decisión explícita de quitar read-only bajo supervisión. **El proyecto es PRODUCCIÓN: no hay staging.**
+- **GitHub Action de deploy** (`.github/workflows/deploy.yml`): push a `main` con cambios en `supabase/functions/**` → `supabase functions deploy`. Secrets: `SUPABASE_ACCESS_TOKEN`, `SUPABASE_PROJECT_ID`.
+- Pendiente de revisión técnica: asegurar `verify_jwt = false` en el `config.toml` de las funciones que se invocan con `x-api-key` (no con JWT de usuario), para que el deploy automático no reactive la verificación JWT.
 
 ---
 
-## Fuente de verdad por entidad
+## Edge Functions — Estado v3.1
 
-| Dato | Sistema maestro | Notas |
+| Edge Function | Trigger | Estado v3.1 |
 |---|---|---|
-| Datos de vivienda (iniciales) | Salesforce Account | Se copian a Supabase una vez al crear |
-| Datos de vivienda (operativos) | **Supabase properties** | El CV los edita en PWA. No se sincronizan a SF. |
-| Visitas | **Supabase visit_slots** | Única fuente. No hay Events en SF. |
-| Ofertas | **Supabase offers** | Única fuente. No hay Quotes en SF. |
-| Datos del CV | Salesforce Contact | Se copian a Supabase una vez al crear. |
-| Leads y captación | Salesforce Lead | Sin cambios. |
-| Contratos y firma | Salesforce + Docs/Sign Made Easy | Sin cambios. |
-| Conversaciones PWA | Supabase pwa_chat_sessions | Exclusivo Supabase. |
-| Conversaciones WhatsApp | Supabase whatsapp_conversations | Exclusivo Supabase. |
-| Configuración disponibilidad | Supabase availability_config | Exclusivo Supabase. |
-| Notificaciones | Supabase notifications | Exclusivo Supabase. |
-| Consentimientos RGPD | Supabase consents | Exclusivo Supabase. |
+| `create-user` | HTTP POST desde SF Flow 1 | ✅ Completada |
+| `send-welcome-email` | Interna desde create-user | ✅ Completada |
+| `generate-slots` | Cron día 20 + manual | ✅ Completada |
+| `cleanup-slots` | Cron diario 02:00 | ✅ Completada |
+| `get-available-slots` | Tool del agente / HTTP GET | ✅ Completada (pasa a ser tool de whatsapp-agent) |
+| `request-visit-slot` | Tool del agente / HTTP POST | ✅ Completada (pasa a ser tool de whatsapp-agent) |
+| `get-conversation-history` | Interna desde whatsapp-agent | ✅ Completada |
+| `save-message` | Interna desde whatsapp-agent | ✅ Completada |
+| `notify-visit` | HTTP POST desde PWA | 🔄 REESCRIBIR: Resend + WhatsApp directo, eliminar webhook Make |
+| `whatsapp-agent` | **Webhook de Meta (GET verificación + POST mensajes)** | ⬜ NUEVA (B5) — pieza central |
+| `process-idealista-lead` | HTTP POST desde Make Esc. 2 | ⬜ NUEVA (B5) |
+| `cancel-visit-by-visitor` | Tool del agente | ⬜ Pendiente (B6) |
+| `visit-reminders` | Cron diario 09:00 | ⬜ Pendiente (B7) — envía con Resend directo |
+| `manage-offer` | HTTP POST desde PWA | ⬜ Pendiente (B9) — envía con Resend directo |
+| `create-offer` | Tool del agente | ⬜ Pendiente (B9) — con gate de honorarios |
+| `complete-visits` | Cron diario 23:00 | ⬜ Aplazado (B11) — verificar si el cron ya existe antes de crear |
+| `chat-with-hero` | HTTP POST desde PWA | ⏸️ Aplazada (B10, post-lanzamiento) |
+
+### Secrets de Supabase (estado objetivo v3.1)
+- `RESEND_API_KEY` (rotar: tarea B12)
+- `PWA_BASE_URL`
+- `OPENAI_API_KEY` (nuevo — whatsapp-agent)
+- `META_APP_SECRET` (nuevo — validación HMAC del webhook)
+- `WHATSAPP_TOKEN` y `WHATSAPP_PHONE_NUMBER_ID` (envío Cloud API)
+- ~~`MAKE_WEBHOOK_NOTIFY_VISIT`~~ — ELIMINAR tras reescribir notify-visit
 
 ---
 
-## Lo que SE MANTIENE en Salesforce
+## Make.com — Estado v3.1
 
-1. Gestión de Leads (captación, cualificación, conversión a Account + Contact)
-2. Generación de contratos (Docs Made Easy)
-3. Firma digital (Sign Made Easy)
-4. Flow 1: botón "Enviar acceso a la PWA" → HTTP Callout a `create-user-and-property`
-5. Account y Contact como registro maestro de la relación contractual
-6. Named Credential para autenticación del HTTP Callout
+| # | Escenario | Estado v3.1 |
+|---|---|---|
+| 1 | Formulario web → Lead en Salesforce | ✅ Activo (se mantiene) |
+| 2 | Gmail Watch (Idealista) → HTTP a process-idealista-lead | 🔄 Reconfigurar: SOLO 2 módulos |
+| 3 | Notificación visita → Gmail | ❌ ELIMINADO (desactivar al desplegar notify-visit v3.1) |
+| 4 | Recordatorio 24h → Gmail | ❌ ELIMINADO (nunca construir) |
+| 5 | Decisión oferta → Gmail | ❌ ELIMINADO (nunca construir) |
+| 6 | Post-visita → Gmail + WhatsApp | ❌ ELIMINADO (nunca construir) |
+| — | Webhook WhatsApp entrante | ❌ ELIMINADO (el webhook de Meta apunta a whatsapp-agent) |
 
 ---
 
-## Reglas para Claude Code
+## Fuente de verdad por entidad (sin cambios respecto a v3.0)
 
-1. **No crear** Edge Functions que sincronicen datos a Salesforce (confirm-visit-to-sf, update-offer-to-sf, sync-offer-from-sf, update-property-to-sf). Estas corresponden a v2.0 y están obsoletas.
-2. **No escribir** en los campos `salesforce_event_id` (visit_slots) ni `salesforce_quote_id` (offers). Son legacy nullable.
-3. **Ofertas**: la fuente de verdad es la tabla `offers` de Supabase. No crear Quotes en Salesforce.
-4. **Visitas**: la fuente de verdad es la tabla `visit_slots` de Supabase. No crear Events en Salesforce.
-5. **Edición de propiedad**: guardar solo en Supabase. No sincronizar a SF Account.
-6. **Notificaciones al PC**: siempre vía webhook a Make (que envía por Gmail/WhatsApp). Nunca vía Salesforce Flows.
-7. **Email de bienvenida al CV**: vía Edge Function + Resend (no Make).
-8. **Dashboard**: aplicación separada de la PWA, mismo proyecto Supabase, autenticación con role admin.
+| Dato | Sistema maestro |
+|---|---|
+| Datos de vivienda (iniciales) | Salesforce Account → copia única a Supabase |
+| Datos de vivienda (operativos) | Supabase `properties` |
+| Visitas | Supabase `visit_slots` |
+| Ofertas | Supabase `offers` |
+| Datos del CV | Salesforce Contact → copia única a Supabase |
+| Leads y captación | Salesforce Lead |
+| Contratos y firma | Salesforce + Docs/Sign Made Easy |
+| Conversaciones PWA | Supabase `pwa_chat_sessions` |
+| Conversaciones WhatsApp | Supabase `whatsapp_conversations` |
+| Consentimientos RGPD | Supabase `consents` |
+
+---
+
+## Reglas para Claude Code (v3.1)
+
+1. **NO crear** Edge Functions de sincronización con Salesforce (`confirm-visit-to-sf`, `update-offer-to-sf`, `sync-offer-from-sf`, `update-property-to-sf`). Obsoletas desde v3.0.
+2. **NO desarrollar nada nuevo en Salesforce** (congelado v3.1): ni campos, ni Flows, ni Apex.
+3. **NO proponer escenarios de Make** para notificaciones, agente conversacional ni lógica de negocio. Make = solo Escenarios 1 y 2.
+4. **Todo email transaccional sale por Resend** desde Edge Functions, con plantillas HTML embebidas en el código. Nunca por Gmail/Make.
+5. El agente de WhatsApp vive en la Edge Function `whatsapp-agent`. El webhook de Meta apunta a ella. Validar SIEMPRE la firma HMAC en POST y responder al hub.challenge en GET.
+6. **NO escribir** en `salesforce_event_id` (visit_slots) ni `salesforce_quote_id` (offers).
+7. **NO construir** B8 (Dashboard), B10 (chat PWA) ni B11 (post-visita) hasta el post-lanzamiento.
+8. El DNI del PC se solicita en `create_offer`, no antes de la visita.
+9. Parsing de emails de Idealista: con LLM y salida JSON + alerta de fallo. Nunca regex.
+10. El MCP de Supabase está en read-only: generar SQL de migraciones/crons para aplicación manual, salvo instrucción explícita en contrario.
+11. Valores de status en BD: usar EXACTAMENTE los documentados en CLAUDE.md (PascalCase verificado contra la BD). Ignorar cualquier documento que los liste en minúsculas.
