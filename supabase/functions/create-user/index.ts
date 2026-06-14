@@ -164,7 +164,7 @@ Deno.serve(async (req: Request) => {
   const { data: linkData, error: linkError } = await supabase.auth.admin.generateLink({
     type: "magiclink",
     email: user.email,
-    options: { redirectTo: pwaBaseUrl },
+    options: { redirectTo: `${pwaBaseUrl}/auth/callback` },
   })
 
   if (linkError || !linkData?.properties?.action_link) {

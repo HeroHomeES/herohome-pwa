@@ -1,14 +1,22 @@
 import { useState, type FormEvent } from 'react'
-import { Navigate } from 'react-router-dom'
+import { Navigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabaseClient'
 import { useAuth } from '../context/AuthContext'
 
+const NOT_A_CLIENT_ERROR =
+  'Su email no aparece como cliente de Herohome. Póngase en contacto con nosotros en hola@herohome.es'
+const MAGIC_LINK_ERROR = 'El enlace de acceso ha caducado o no es válido. Solicita uno nuevo.'
+const GENERIC_ERROR = 'No se pudo enviar el enlace. Inténtalo de nuevo.'
+
 export default function LoginPage() {
   const { session, loading } = useAuth()
+  const [searchParams] = useSearchParams()
   const [email, setEmail] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [sent, setSent] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(
+    searchParams.get('error') === 'magiclink' ? MAGIC_LINK_ERROR : null
+  )
 
   if (!loading && session) {
     return <Navigate to="/" replace />
@@ -19,13 +27,31 @@ export default function LoginPage() {
     setError(null)
     setSubmitting(true)
 
+    const trimmedEmail = email.trim()
+
+    const { data: exists, error: lookupError } = await supabase.rpc('check_user_exists_by_email', {
+      p_email: trimmedEmail,
+    })
+
+    if (lookupError) {
+      setError(GENERIC_ERROR)
+      setSubmitting(false)
+      return
+    }
+
+    if (!exists) {
+      setError(NOT_A_CLIENT_ERROR)
+      setSubmitting(false)
+      return
+    }
+
     const { error } = await supabase.auth.signInWithOtp({
-      email: email.trim(),
-      options: { emailRedirectTo: window.location.origin },
+      email: trimmedEmail,
+      options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
     })
 
     if (error) {
-      setError('No se pudo enviar el enlace. Inténtalo de nuevo.')
+      setError(GENERIC_ERROR)
     } else {
       setSent(true)
     }

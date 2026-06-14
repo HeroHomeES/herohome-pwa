@@ -5,6 +5,7 @@ import './index.css'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import MainLayout from './layouts/MainLayout'
 import LoginPage from './pages/LoginPage'
+import AuthCallbackPage from './pages/AuthCallbackPage'
 
 const HomePage = lazy(() => import('./pages/HomePage'))
 const PropertyPage = lazy(() => import('./pages/PropertyPage'))
@@ -26,6 +27,7 @@ function ProtectedLayout() {
 
 const router = createBrowserRouter([
   { path: '/login', element: <LoginPage /> },
+  { path: '/auth/callback', element: <AuthCallbackPage /> },
   {
     element: <ProtectedLayout />,
     children: [
