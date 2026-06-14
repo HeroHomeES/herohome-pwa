@@ -166,7 +166,7 @@ src/
 ## Estado del proyecto (actualizado 12 junio 2026 — plan v3.1)
 
 **B0-B4 — Fundamentos, Activación CV, PWA, Edición, Slots: ✅ COMPLETADOS**
-- Pendiente menor (B2): bug del route guard del Magic Link (timing onAuthStateChange) — 🔄 en curso.
+- ✅ Bug del Magic Link (route guard + Service Worker stale) resuelto 14 junio 2026 — ver Registro de sesiones.
 
 **B5 — Agente WhatsApp + Visitas: 🔄 EN CURSO** ← **CAMINO CRÍTICO**
 - ✅ Edge Functions de soporte (slots, historial, mensajes). PWA: visitas pendientes + próximas + reagendar.
@@ -195,6 +195,29 @@ src/
 ---
 
 ## Registro de sesiones
+
+### 14 junio 2026 — Fix definitivo Magic Link (env var + Service Worker)
+
+**Síntoma:** al pedir el magic link y pulsar el enlace del email, el usuario acababa en `/login?error=magiclink` ("Su enlace de acceso ha caducado o no es válido. Solicita uno nuevo") en vez de entrar a la app. También fallaba el aviso "no es cliente" al pedir el enlace (mensaje genérico "No se pudo enviar el enlace").
+
+**Causa raíz #1 — env var mal configurada en Vercel:**
+`VITE_SUPABASE_URL` en producción tenía el sufijo `/rest/v1` (p.ej. `https://zqkvcphtqmibttgnivku.supabase.co/rest/v1` en vez de solo `https://zqkvcphtqmibttgnivku.supabase.co`). Esto rompía:
+- El RPC `check_user_exists_by_email` (`.../rest/v1/rpc/...` → se duplicaba el prefijo `/rest/v1` → 404 → "No se pudo enviar el enlace").
+- La validación de sesión post-callback (`supabase-js` llamaba a `.../rest/v1/auth/v1/user` → 404 → sesión nunca se establece → timeout → `/login?error=magiclink`).
+
+Fix: borrada y recreada `VITE_SUPABASE_URL` (y `VITE_SUPABASE_ANON_KEY`) en Vercel con el valor correcto, sin `/rest/v1` ni barra final, + Redeploy. Vercel oculta el valor de las env vars existentes (solo permite editar/borrar sin verlas) — por eso hubo que recrearla en lugar de inspeccionarla.
+
+**Causa raíz #2 — Service Worker con código cacheado antiguo:**
+Con la env var ya corregida, el primer clic en el magic link SÍ autenticaba correctamente en Supabase (verificado vía `mcp__supabase__get_logs` service `auth`: `GET /verify` → `303` → evento `Login` exitoso con `login_method: implicit`). Pero el navegador móvil tenía cacheada por el Service Worker (PWA) una versión antigua de la app sin manejo real de `/auth/callback`, así que el login no se reflejaba en pantalla. El usuario volvía a pulsar el mismo enlace del email → segundo `GET /verify` con el mismo token → `403 "One-time token not found" / Email link is invalid or has expired` → de ahí el `?error=magiclink`. Confirmado: en modo incógnito (sin SW) el flujo funcionaba perfecto a la primera.
+
+**Fix aplicado (commit `e52ab9d`, sobre la base del fix de redirect/callback ya mergeado en `14c64a5`):**
+- `vite.config.ts`: `VitePWA({ injectRegister: false, workbox: { cleanupOutdatedCaches: true, clientsClaim: true, skipWaiting: true }, ... })`.
+- `src/main.tsx`: registro explícito vía `virtual:pwa-register` — `registerSW({ immediate: true, onNeedRefresh: () => location.reload(), onRegisteredSW: (_, reg) => { reg?.update(); setInterval(() => reg?.update(), 3600_000) } })`.
+- `src/vite-env.d.ts`: añadida referencia de tipos `vite-plugin-pwa/client`.
+
+**Resultado:** flujo de magic link (incluido el aviso "no es cliente") verificado funcionando end-to-end en producción. Cualquier usuario con una versión antigua de la PWA instalada se actualizará y recargará automáticamente al detectar el nuevo Service Worker.
+
+---
 
 ### 12 junio 2026 — Migración a plan v3.1
 - Decisión arquitectónica v3.1: agente WhatsApp en Edge Function (no Make); Resend único canal email (Escenarios Make 3-6 eliminados); Salesforce congelado; B8/B10/B11 aplazados; parsing Idealista con LLM.
