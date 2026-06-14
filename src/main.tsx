@@ -1,6 +1,7 @@
 import { StrictMode, lazy, Suspense } from 'react'
 import { createRoot } from 'react-dom/client'
 import { createBrowserRouter, RouterProvider, Navigate } from 'react-router-dom'
+import { registerSW } from 'virtual:pwa-register'
 import './index.css'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import MainLayout from './layouts/MainLayout'
@@ -39,6 +40,17 @@ const router = createBrowserRouter([
   },
   { path: '*', element: <Navigate to="/" replace /> },
 ])
+
+registerSW({
+  immediate: true,
+  onNeedRefresh() {
+    window.location.reload()
+  },
+  onRegisteredSW(_swUrl, registration) {
+    registration?.update()
+    setInterval(() => registration?.update(), 60 * 60 * 1000)
+  },
+})
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
