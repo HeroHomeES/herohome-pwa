@@ -1,0 +1,11 @@
+project_id = "zqkvcphtqmibttgnivku"
+
+# whatsapp-agent recibe el webhook de Meta (sin JWT de Supabase) y valida la
+# firma HMAC X-Hub-Signature-256 por su cuenta → verify_jwt debe estar en false.
+[functions.whatsapp-agent]
+verify_jwt = false
+
+# process-idealista-lead se invoca desde Make (Escenario 2) con x-api-key, sin
+# JWT de Supabase → verify_jwt debe estar en false.
+[functions.process-idealista-lead]
+verify_jwt = false

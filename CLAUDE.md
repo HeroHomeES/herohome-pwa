@@ -19,7 +19,7 @@ Herohome es la primera agencia inmobiliaria 100% digital de España. Propietario
 - **CV** (Cliente Vendedor): propietario con contrato. Accede a la PWA.
 - **PC** (Prospecto Comprador): interesado en comprar. Solo interactúa vía WhatsApp.
 - **PV** (Prospecto Vendedor): sin contrato. No accede a la PWA.
-- **Hero**: agente IA (GPT-4o). Instancia activa: Agente WhatsApp (`whatsapp-agent`). El Agente PWA está aplazado (B10).
+- **Hero**: agente IA (Claude Haiku 4.5, Anthropic API). Instancia activa: Agente WhatsApp (`whatsapp-agent`). El Agente PWA está aplazado (B10).
 - **Agente Herohome**: persona humana para tareas no automatizables. Opera con el Table Editor de Supabase + vistas SQL (el Dashboard completo está aplazado, B8).
 
 ---
@@ -30,12 +30,12 @@ Herohome es la primera agencia inmobiliaria 100% digital de España. Propietario
 |------|-----------|
 | PWA Frontend (CV) | React 18 + Vite + TypeScript + Tailwind CSS — **este repo** |
 | Backend / BD / Lógica | Supabase (PostgreSQL + Auth + Edge Functions + Cron) |
-| Agente WhatsApp | Edge Function `whatsapp-agent` (GPT-4o, tool calling) |
+| Agente WhatsApp | Edge Function `whatsapp-agent` (Claude Haiku 4.5, tool calling) |
 | CRM | Salesforce Enterprise + Docs/Sign Made Easy — **CONGELADO: no añadir nada** |
 | Email transaccional (CV y PC) | Resend desde Edge Functions (plantillas HTML en código) |
 | Make.com | SOLO: Esc. 1 (form web → Lead SF) y Esc. 2 (Gmail Idealista → Edge Function) |
 | WhatsApp | WhatsApp Cloud API (Meta) — webhook apunta a `whatsapp-agent` |
-| IA | OpenAI GPT-4o vía API |
+| IA | Anthropic API — modelo `claude-haiku-4-5` |
 | Hosting | Vercel (auto-deploy desde GitHub) |
 | Dashboard Operaciones | APLAZADO (B8) — interim: Supabase Table Editor + vistas SQL |
 
@@ -133,8 +133,8 @@ src/
 | `get-conversation-history` | Interna desde whatsapp-agent | ✅ Completada |
 | `save-message` | Interna desde whatsapp-agent | ✅ Completada |
 | `notify-visit` | HTTP POST desde PWA | 🔄 REESCRIBIR (B5): Resend + WhatsApp directo, sin Make |
-| `whatsapp-agent` | Webhook de Meta (GET + POST con HMAC) | ⬜ NUEVA (B5) ← **PRÓXIMO PASO** |
-| `process-idealista-lead` | HTTP POST desde Make Esc. 2 | ⬜ NUEVA (B5) |
+| `whatsapp-agent` | Webhook de Meta (GET + POST con HMAC) | ✅ Desplegada (B5, verify_jwt=false, verificación GET/HMAC probada) ← **PRÓXIMO: conectar webhook en Meta** |
+| `process-idealista-lead` | HTTP POST desde Make Esc. 2 | ✅ Desplegada (B5, verify_jwt=false) — pendiente reconfigurar Make Esc. 2 |
 | `cancel-visit-by-visitor` | Tool de whatsapp-agent | ⬜ Pendiente (B6) |
 | `visit-reminders` | Cron diario 09:00 | ⬜ Pendiente (B7) |
 | `manage-offer` | HTTP POST desde PWA | ⬜ Pendiente (B9) |
@@ -145,9 +145,11 @@ src/
 ### Secrets de Supabase (estado objetivo v3.1)
 - `RESEND_API_KEY` (pendiente rotación, B12)
 - `PWA_BASE_URL` (`https://app.herohome.es`)
-- `OPENAI_API_KEY` — NUEVO (whatsapp-agent)
+- `ANTHROPIC_API_KEY` — NUEVO (whatsapp-agent y process-idealista-lead, modelo `claude-haiku-4-5`)
 - `META_APP_SECRET` — NUEVO (validación HMAC)
+- `WHATSAPP_VERIFY_TOKEN` — NUEVO (verificación GET del webhook de Meta, string propio)
 - `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID` — envío Cloud API
+- `WHATSAPP_WELCOME_TEMPLATE_NAME` — NUEVO (plantilla de bienvenida aprobada en Meta; por defecto `bienvenida_pc`)
 - ~~`MAKE_WEBHOOK_NOTIFY_VISIT`~~ — ELIMINAR al reescribir notify-visit
 
 ---
@@ -170,10 +172,10 @@ src/
 
 **B5 — Agente WhatsApp + Visitas: 🔄 EN CURSO** ← **CAMINO CRÍTICO**
 - ✅ Edge Functions de soporte (slots, historial, mensajes). PWA: visitas pendientes + próximas + reagendar.
-- ⬜ Edge Function `whatsapp-agent` (webhook Meta + HMAC + loop GPT-4o + tools) — **siguiente tarea de Claude Code**.
-- ⬜ Edge Function `process-idealista-lead` (parsing LLM).
+- ✅ Código de `whatsapp-agent` (webhook Meta + HMAC + loop Claude Haiku 4.5 + tools get_available_slots/request_visit) — pendiente desplegar y configurar secrets/webhook.
+- ✅ Código de `process-idealista-lead` (extracción con Claude Haiku 4.5 + lookup Supabase + WhatsApp bienvenida + alerta Resend) — pendiente desplegar y reconfigurar Make Esc. 2.
 - ⬜ Reescribir `notify-visit` (Resend + WhatsApp directo).
-- ⬜ Plantillas WhatsApp en Meta (aprobación externa, en paralelo) + plantillas email en código.
+- 🔄 Plantillas WhatsApp en Meta (en curso por el usuario) + plantillas email en código.
 - ⬜ Reapuntar webhook de Meta a la Edge Function. Reconfigurar Make Esc. 2. Validación end-to-end.
 
 **B6 — Reagendado PC: ⬜ PENDIENTE** (tools sobre whatsapp-agent)
@@ -195,6 +197,22 @@ src/
 ---
 
 ## Registro de sesiones
+
+### 15 junio 2026 — B5: código de whatsapp-agent y process-idealista-lead
+
+- **Cambio de modelo IA**: GPT-4o → **Claude Haiku 4.5** (Anthropic API) para el motor conversacional. Motivo: la suscripción Claude Pro del usuario no cubre uso de API (sistemas de facturación independientes); Haiku 4.5 sale 2-4x más barato que GPT-4o para este caso de uso (historial corto + tool calling), con tool use nativo. Actualizado en `ARCHITECTURE_V3_DECISIONS.md` y aquí: secret `OPENAI_API_KEY` → `ANTHROPIC_API_KEY`.
+- **Nuevo** `_shared/send-whatsapp.ts`: helper compartido (`sendWhatsAppText`, `sendWhatsAppTemplate`) sobre WhatsApp Cloud API v25.0.
+- **Nuevo** `_shared/email-templates/idealista-lead-alert.ts`: plantilla de alerta para Resend.
+- **Nuevo** `process-idealista-lead/index.ts`: POST con `x-api-key`, extrae teléfono/nombre/referencia del email de Idealista vía Claude Haiku 4.5 (tool-calling forzado, JSON), busca la propiedad por `salesforce_account_id`, normaliza el teléfono a E.164, evita duplicados, envía plantilla de bienvenida WhatsApp y siembra `whatsapp_conversations`. Alerta por Resend a `hola@herohome.es` si falla la extracción o no se encuentra la propiedad.
+- **Nuevo** `whatsapp-agent/index.ts`: GET responde `hub.challenge` (verificación con `WHATSAPP_VERIFY_TOKEN`); POST valida HMAC `X-Hub-Signature-256` (constant-time compare), carga historial + propiedad asociada, loop de tool calling con Claude Haiku 4.5 (`get_available_slots`, `request_visit`), inserta en `consents` cuando el comprador acepta RGPD antes de `request_visit`, responde por WhatsApp Cloud API y persiste con `save-message`. Siempre devuelve 200 a Meta (errores se loggean y se notifican al usuario por WhatsApp) salvo firma inválida (403).
+- **`verify_jwt` (resuelve parte de B14)**: se verificó vía MCP que **todas** las Edge Functions existentes tienen `verify_jwt=true` (el gateway de Supabase exige JWT; los llamadores envían la anon key como Bearer y la auth real es el `x-api-key` interno). Consecuencias en B5:
+  - Creado `supabase/config.toml` con `verify_jwt=false` SOLO para `whatsapp-agent` y `process-idealista-lead` (Meta/Make no envían JWT). Las demás funciones se dejan en `true` (su estado actual; el "flip a false de todas las x-api-key" del B14 queda pendiente y requiere revisar la auth interna de create-user/send-welcome-email/generate-slots/notify-visit antes de tocarlas).
+  - **Bug corregido en whatsapp-agent**: `callInternalFunction` ahora envía `Authorization: Bearer ${SUPABASE_ANON_KEY}` además del `x-api-key`, porque las funciones-tool internas (get-available-slots, request-visit-slot, save-message) tienen `verify_jwt=true` y el gateway las rechazaría (401) sin JWT.
+- **Secrets cargados (15 junio)**: `ANTHROPIC_API_KEY` y `META_APP_SECRET` ya estaban; añadidos vía CLI `WHATSAPP_TOKEN` (temporal 24h — pendiente token permanente de usuario del sistema), `WHATSAPP_PHONE_NUMBER_ID=1047339358460376`, `WHATSAPP_VERIFY_TOKEN`, `WHATSAPP_WELCOME_TEMPLATE_NAME=bienvenida_pc`. Sigue existiendo `OPENAI_API_KEY` (obsoleta, eliminar) y `MAKE_WEBHOOK_NOTIFY_VISIT` (eliminar al reescribir notify-visit). WhatsApp Business Account ID: `1424979468699232`.
+- **Desplegadas (15 junio)**: `whatsapp-agent` y `process-idealista-lead` desplegadas vía CLI a producción con `verify_jwt=false` (confirmado vía MCP). Verificación del webhook probada con curl: GET con verify token correcto → 200 + challenge; GET con token incorrecto → 403; POST sin firma HMAC → 403. ⚠️ El flujo POST completo (mensaje firmado → Claude → tools → respuesta) NO se ha podido probar todavía porque requiere una firma HMAC real de Meta (no tenemos el valor de `META_APP_SECRET`, solo el digest). Se valida al conectar Meta.
+- **Pendiente (no código)**: token permanente de WhatsApp; aprobar plantilla `bienvenida_pc` en Meta; conectar el webhook de Meta apuntando a `whatsapp-agent` (Callback URL = `https://zqkvcphtqmibttgnivku.supabase.co/functions/v1/whatsapp-agent`, verify token = el valor de `WHATSAPP_VERIFY_TOKEN`, suscribir campo `messages`); reconfigurar Make Esc. 2; prueba end-to-end.
+
+---
 
 ### 14 junio 2026 — Fix definitivo Magic Link (env var + Service Worker)
 

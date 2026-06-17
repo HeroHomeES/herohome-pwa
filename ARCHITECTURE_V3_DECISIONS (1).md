@@ -30,7 +30,7 @@ Webhook de Meta (mensajes entrantes WhatsApp)
       1. GET: responde al hub.challenge de verificación de Meta
       2. POST: valida firma HMAC X-Hub-Signature-256 (META_APP_SECRET)
       3. Recupera historial (get-conversation-history / tabla whatsapp_conversations)
-      4. Loop de tool calling con GPT-4o
+      4. Loop de tool calling con Claude Haiku 4.5 (Anthropic API)
       5. Tools v1: get_available_slots, request_visit
          Tools v2 (B6/B9): cancel_visit_by_visitor, create_offer
       6. Persiste mensajes (save-message)
@@ -119,8 +119,8 @@ El flujo RGPD del agente de WhatsApp pide consentimiento de privacidad al inicio
 | `get-conversation-history` | Interna desde whatsapp-agent | ✅ Completada |
 | `save-message` | Interna desde whatsapp-agent | ✅ Completada |
 | `notify-visit` | HTTP POST desde PWA | 🔄 REESCRIBIR: Resend + WhatsApp directo, eliminar webhook Make |
-| `whatsapp-agent` | **Webhook de Meta (GET verificación + POST mensajes)** | ⬜ NUEVA (B5) — pieza central |
-| `process-idealista-lead` | HTTP POST desde Make Esc. 2 | ⬜ NUEVA (B5) |
+| `whatsapp-agent` | **Webhook de Meta (GET verificación + POST mensajes)** | ✅ Desplegada (B5, verify_jwt=false) — pendiente conectar webhook en Meta |
+| `process-idealista-lead` | HTTP POST desde Make Esc. 2 | ✅ Desplegada (B5, verify_jwt=false) — pendiente reconfigurar Make Escenario 2 |
 | `cancel-visit-by-visitor` | Tool del agente | ⬜ Pendiente (B6) |
 | `visit-reminders` | Cron diario 09:00 | ⬜ Pendiente (B7) — envía con Resend directo |
 | `manage-offer` | HTTP POST desde PWA | ⬜ Pendiente (B9) — envía con Resend directo |
@@ -131,9 +131,11 @@ El flujo RGPD del agente de WhatsApp pide consentimiento de privacidad al inicio
 ### Secrets de Supabase (estado objetivo v3.1)
 - `RESEND_API_KEY` (rotar: tarea B12)
 - `PWA_BASE_URL`
-- `OPENAI_API_KEY` (nuevo — whatsapp-agent)
+- `ANTHROPIC_API_KEY` (nuevo — whatsapp-agent y process-idealista-lead, modelo `claude-haiku-4-5`)
 - `META_APP_SECRET` (nuevo — validación HMAC del webhook)
+- `WHATSAPP_VERIFY_TOKEN` (nuevo — string propio elegido por nosotros, para la verificación GET del webhook de Meta)
 - `WHATSAPP_TOKEN` y `WHATSAPP_PHONE_NUMBER_ID` (envío Cloud API)
+- `WHATSAPP_WELCOME_TEMPLATE_NAME` (nuevo — nombre de la plantilla de bienvenida aprobada en Meta, usada por process-idealista-lead; por defecto `bienvenida_pc`)
 - ~~`MAKE_WEBHOOK_NOTIFY_VISIT`~~ — ELIMINAR tras reescribir notify-visit
 
 ---
