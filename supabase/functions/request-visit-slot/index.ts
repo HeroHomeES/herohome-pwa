@@ -17,7 +17,7 @@ interface RequestVisitBody {
   visitor_name: string
   visitor_last_name: string
   visitor_phone: string
-  visitor_email?: string
+  visitor_email: string
   visitor_dni?: string
   consent_given: boolean
 }
@@ -57,10 +57,10 @@ Deno.serve(async (req: Request) => {
   const { slot_id, visitor_name, visitor_last_name, visitor_phone, visitor_email, visitor_dni, consent_given } = body
 
   // Validate required fields presence
-  if (!slot_id || !visitor_name || !visitor_last_name || !visitor_phone || consent_given === undefined || consent_given === null) {
+  if (!slot_id || !visitor_name || !visitor_last_name || !visitor_phone || !visitor_email || consent_given === undefined || consent_given === null) {
     return new Response(
       JSON.stringify({
-        error: "slot_id, visitor_name, visitor_last_name, visitor_phone y consent_given son obligatorios",
+        error: "slot_id, visitor_name, visitor_last_name, visitor_phone, visitor_email y consent_given son obligatorios",
       }),
       { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     )

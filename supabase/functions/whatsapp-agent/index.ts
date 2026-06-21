@@ -100,7 +100,7 @@ const TOOLS = [
   {
     name: "request_visit",
     description:
-      "Reserva una visita para la vivienda en el horario indicado (slot_id). Solo se debe llamar después de que el comprador haya dado su nombre completo y haya aceptado expresamente la política de privacidad (consentimiento RGPD).",
+      "Reserva una visita para la vivienda en el horario indicado (slot_id). Solo se debe llamar después de que el comprador haya facilitado su nombre completo y su email, y haya aceptado expresamente los términos y condiciones (consentimiento RGPD).",
     input_schema: {
       type: "object",
       properties: {
@@ -111,16 +111,16 @@ const TOOLS = [
         visitor_name: { type: "string", description: "Nombre del comprador" },
         visitor_last_name: { type: "string", description: "Apellidos del comprador" },
         visitor_email: {
-          type: ["string", "null"],
-          description: "Email del comprador, si lo ha facilitado",
+          type: "string",
+          description: "Email del comprador. OBLIGATORIO para reservar (se usará para enviarle información, ofertas y el contrato).",
         },
         consent_given: {
           type: "boolean",
           description:
-            "true únicamente si el comprador ha aceptado explícitamente la política de privacidad en la conversación",
+            "true únicamente si el comprador ha aceptado explícitamente los términos y condiciones en la conversación",
         },
       },
-      required: ["slot_id", "visitor_name", "visitor_last_name", "consent_given"],
+      required: ["slot_id", "visitor_name", "visitor_last_name", "visitor_email", "consent_given"],
     },
   },
 ]
@@ -234,7 +234,7 @@ Tu objetivo es ayudar al comprador a consultar disponibilidad de visitas y reser
 Reglas importantes:
 - NUNCA digas que una visita está reservada o confirmada salvo que la tool request_visit te haya devuelto un resultado de éxito en ESTE mismo turno. Está terminantemente prohibido inventar o anticipar una confirmación.
 - Procedimiento OBLIGATORIO para reservar una visita, en este orden:
-  1. Reúne el nombre y los apellidos del comprador y su consentimiento explícito a la política de privacidad (pregúntale: "¿Aceptas nuestra política de privacidad para gestionar tu visita? https://herohome.es/privacidad"). Usa consent_given=true solo si responde afirmativamente.
+  1. Reúne el nombre, los apellidos y el email del comprador, y su consentimiento explícito a los términos y condiciones. El email es OBLIGATORIO (lo necesitaremos para enviarle información, ofertas o el contrato): si no lo facilita, pídeselo y NO continúes con la reserva hasta tenerlo. Para el consentimiento pregúntale: "¿Aceptas nuestros términos y condiciones para gestionar tu visita? https://www.herohome.es/terminos-y-condiciones". Usa consent_given=true solo si responde afirmativamente.
   2. Llama a get_available_slots para obtener los slot_id ACTUALES. Los slot_id NO se conservan entre mensajes, así que debes volver a pedirlos llamando a la tool justo antes de reservar, aunque ya hubieras mostrado los horarios antes.
   3. Localiza en el resultado el slot_id que corresponde EXACTAMENTE al día y la hora que eligió el comprador.
   4. Llama a request_visit con ese slot_id, el nombre, los apellidos y consent_given.
