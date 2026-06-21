@@ -1,8 +1,41 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import { sendEmail } from "../_shared/send-email.ts"
+import { sendWhatsAppTemplate, sendWhatsAppText } from "../_shared/send-whatsapp.ts"
+import { visitConfirmationHtml, visitCancellationHtml } from "../_shared/email-templates/visit-status.ts"
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+}
+
+// Plantillas de WhatsApp (deben existir y estar aprobadas en Meta con estos
+// nombres exactos y 3 variables de cuerpo: {{1}} nombre, {{2}} dirección, {{3}} fecha/hora).
+const TEMPLATE_CONFIRMED = "visita_confirmada"
+const TEMPLATE_CANCELED = "visita_cancelada"
+
+function formatMadrid(iso: string): string {
+  const d = new Date(iso)
+  const fecha = new Intl.DateTimeFormat("es-ES", {
+    timeZone: "Europe/Madrid",
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+  }).format(d)
+  const hora = new Intl.DateTimeFormat("es-ES", {
+    timeZone: "Europe/Madrid",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(d)
+  return `${fecha} a las ${hora}`
+}
+
+function jsonResponse(body: unknown, status: number): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  })
 }
 
 Deno.serve(async (req: Request) => {
@@ -11,36 +44,24 @@ Deno.serve(async (req: Request) => {
   }
 
   if (req.method !== "POST") {
-    return new Response(JSON.stringify({ error: "Method not allowed" }), {
-      status: 405,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    })
+    return jsonResponse({ error: "Method not allowed" }, 405)
   }
 
+  // La PWA invoca con el JWT de sesión del CV (verify_jwt=true en esta función).
   if (!req.headers.get("Authorization")) {
-    return new Response(JSON.stringify({ error: "Missing authorization header" }), {
-      status: 401,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    })
+    return jsonResponse({ error: "Missing authorization header" }, 401)
   }
 
-  let body: { visit_slot_id: string; action: string }
+  let body: { visit_slot_id?: string; action?: string }
   try {
     body = await req.json()
   } catch {
-    return new Response(JSON.stringify({ error: "Invalid JSON body" }), {
-      status: 400,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    })
+    return jsonResponse({ error: "Invalid JSON body" }, 400)
   }
 
   const { visit_slot_id, action } = body
-
   if (!visit_slot_id || !action) {
-    return new Response(JSON.stringify({ error: "visit_slot_id y action son obligatorios" }), {
-      status: 400,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    })
+    return jsonResponse({ error: "visit_slot_id y action son obligatorios" }, 400)
   }
 
   const supabase = createClient(
@@ -48,7 +69,7 @@ Deno.serve(async (req: Request) => {
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
   )
 
-  // 1. Obtener datos de la visita
+  // 1. Datos de la visita
   const { data: slot, error: slotError } = await supabase
     .from("visit_slots")
     .select("*")
@@ -56,83 +77,64 @@ Deno.serve(async (req: Request) => {
     .single()
 
   if (slotError || !slot) {
-    return new Response(JSON.stringify({ error: `Visita no encontrada: ${slotError?.message}` }), {
-      status: 404,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    })
+    return jsonResponse({ error: `Visita no encontrada: ${slotError?.message}` }, 404)
   }
 
-  // 2. Obtener datos de la propiedad
+  // 2. Datos de la propiedad
   const { data: property } = await supabase
     .from("properties")
-    .select("street, city, state, user_id")
+    .select("street, city, state")
     .eq("id", slot.property_id)
     .single()
 
-  // 3. Obtener datos del CV (vendedor)
-  const { data: seller } = property?.user_id
-    ? await supabase
-        .from("users")
-        .select("first_name, last_name, email, phone")
-        .eq("id", property.user_id)
-        .single()
-    : { data: null }
+  const isCancellation = action.toLowerCase().includes("cancel")
+  const isConfirmation = action === "Confirmed"
 
-  // 4. Llamar al webhook de Make
-  const webhookUrl = Deno.env.get("MAKE_WEBHOOK_NOTIFY_VISIT")
-  if (!webhookUrl) {
-    console.warn("[notify-visit] MAKE_WEBHOOK_NOTIFY_VISIT no configurada")
-    return new Response(JSON.stringify({ success: false, error: "Webhook no configurado" }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    })
+  if (!isCancellation && !isConfirmation) {
+    return jsonResponse({ success: true, notified: false, reason: `Acción "${action}" sin notificación asociada` }, 200)
   }
 
-  const payload = {
-    action,
-    visit: {
-      id: slot.id,
-      start_time: slot.start_time,
-      end_time: slot.end_time,
-      visitor_name: [slot.visitor_name, slot.visitor_last_name].filter(Boolean).join(" ") || "Visitante",
-      visitor_phone: slot.visitor_phone ?? null,
-      visitor_email: slot.visitor_email ?? null,
-    },
-    property: {
-      address: [property?.street, property?.city, property?.state].filter(Boolean).join(", "),
-    },
-    seller: {
-      name: [seller?.first_name, seller?.last_name].filter(Boolean).join(" "),
-      email: seller?.email ?? null,
-      phone: seller?.phone ?? null,
-    },
-  }
+  const firstName = slot.visitor_name || "Visitante"
+  const address =
+    [property?.street, property?.city, property?.state].filter(Boolean).join(", ") || "la vivienda"
+  const dateTime = formatMadrid(slot.start_time)
 
-  try {
-    const res = await fetch(webhookUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+  const result: { whatsapp: string | null; email: string | null } = { whatsapp: null, email: null }
+
+  // 3. WhatsApp al visitante (PC): plantilla aprobada, con texto libre como
+  //    fallback (válido dentro de la ventana de 24h de atención al cliente).
+  if (slot.visitor_phone) {
+    const templateName = isCancellation ? TEMPLATE_CANCELED : TEMPLATE_CONFIRMED
+    const template = await sendWhatsAppTemplate({
+      to: slot.visitor_phone,
+      templateName,
+      languageCode: "es",
+      bodyParams: [firstName, address, dateTime],
     })
 
-    if (!res.ok) {
-      console.error(`[notify-visit] Make respondió ${res.status}`)
-      return new Response(JSON.stringify({ success: false, error: `Make error: ${res.status}` }), {
-        status: 502,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      })
+    if (template.success) {
+      result.whatsapp = "template"
+    } else {
+      const text = isCancellation
+        ? `Hola ${firstName}, lamentamos informarte de que tu visita a ${address} del ${dateTime} ha sido cancelada. Escríbenos por aquí y te ayudamos a reagendarla.`
+        : `¡Hola ${firstName}! Tu visita a ${address} queda confirmada para el ${dateTime}. ¡Te esperamos! Si necesitas cambiarla, respóndenos por aquí.`
+      const fallback = await sendWhatsAppText({ to: slot.visitor_phone, body: text })
+      result.whatsapp = fallback.success ? "text_fallback" : `failed: ${template.error}`
+      if (!fallback.success) {
+        console.error(`[notify-visit] WhatsApp falló (plantilla y texto) para ${slot.visitor_phone}: ${template.error}`)
+      }
     }
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err)
-    console.error("[notify-visit] Error llamando a Make:", message)
-    return new Response(JSON.stringify({ success: false, error: message }), {
-      status: 502,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    })
   }
 
-  return new Response(JSON.stringify({ success: true }), {
-    status: 200,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
-  })
+  // 4. Email al visitante (PC) si tenemos dirección
+  if (slot.visitor_email) {
+    const html = isCancellation
+      ? visitCancellationHtml({ visitorName: firstName, propertyAddress: address, dateTime })
+      : visitConfirmationHtml({ visitorName: firstName, propertyAddress: address, dateTime })
+    const subject = isCancellation ? "Tu visita ha sido cancelada" : "Tu visita está confirmada"
+    const email = await sendEmail({ to: slot.visitor_email, subject, html })
+    result.email = email.success ? "sent" : `failed: ${email.error}`
+  }
+
+  return jsonResponse({ success: true, action, notified: result }, 200)
 })
