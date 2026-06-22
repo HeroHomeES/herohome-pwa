@@ -198,6 +198,14 @@ src/
 
 ## Registro de sesiones
 
+### 22 junio 2026 — B5 validado END-TO-END (plantillas + email reales)
+
+Plantillas de Meta aprobadas (`bienvenida_pc`, `visita_confirmada`, `visita_cancelada`). Flujo completo probado en producción: lead simulado → `process-idealista-lead` envía `bienvenida_pc` (recibida) + siembra conversación → el comprador chatea con Hero, pide horarios (slots reales de Santander) y reserva visita (email obligatorio + consentimiento) → el CV confirma en la app → `notify-visit` envía plantilla `visita_confirmada` por WhatsApp + email (Resend, branding Herohome) al comprador.
+
+Ajustes de la sesión: (a) Hero ya no inventa "te he enviado un email" (prompt reforzado — solo el sistema notifica al confirmar el propietario); (b) `notify-visit` compone la dirección solo con `street + city` — el campo `state` traía `'S'` (código heredado de SF) que salía como "…, Santander, S".
+
+**Estado B5: funcionalmente completo y validado.** Único pendiente real: que el Escenario 2 de Make dispare con el PRIMER email real de Idealista (la función ya está validada vía curl). Limpieza opcional pendiente: datos de prueba (visitas/conversaciones de test), escenario Make obsoleto `whatsapp-herohome-inbound`, secret `MAKE_WEBHOOK_NOTIFY_VISIT`.
+
 ### 22 junio 2026 — Rediseño de la generación de slots (ventana móvil de 14 días)
 
 **Problema detectado:** `generate-slots` corría solo el día 20 (cron `generate-monthly-slots`) y generaba 28 días → una vivienda dada de alta el día 21 no tenía slots hasta el mes siguiente. Y dos bugs vivos: (1) el filtro del cron usaba `status = 'On Sale'` pero la BD tiene `'On sale'` → **el cron no generaba NADA para ninguna vivienda**; (2) la PWA guardaba `availability_config` pero **nunca disparaba la generación** de slots.
