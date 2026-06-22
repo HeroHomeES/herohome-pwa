@@ -112,7 +112,7 @@ El flujo RGPD del agente de WhatsApp pide consentimiento de privacidad al inicio
 |---|---|---|
 | `create-user` | HTTP POST desde SF Flow 1 | ✅ Completada |
 | `send-welcome-email` | Interna desde create-user | ✅ Completada |
-| `generate-slots` | Cron día 20 + manual | ✅ Completada |
+| `generate-slots` | Cron diario 03:00 UTC + on-save (PWA) | ✅ v3.1: sincroniza ventana móvil de 14 días (idempotente) |
 | `cleanup-slots` | Cron diario 02:00 | ✅ Completada |
 | `get-available-slots` | Tool del agente / HTTP GET | ✅ Completada (pasa a ser tool de whatsapp-agent) |
 | `request-visit-slot` | Tool del agente / HTTP POST | ✅ Completada (pasa a ser tool de whatsapp-agent) |

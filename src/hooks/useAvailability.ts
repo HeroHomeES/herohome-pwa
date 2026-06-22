@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
+import { callEdgeFunction } from '../lib/edgeFunctions'
 import type { AvailabilityDay } from '../lib/types'
 
 const DEFAULT_CONFIG: AvailabilityDay[] = Array.from({ length: 7 }, (_, i) => ({
@@ -41,7 +42,13 @@ export function useAvailability(propertyId: string | null) {
         { onConflict: 'property_id' }
       )
 
-    return { error: error?.message ?? null }
+    if (error) return { error: error.message }
+
+    // Regenera los slots de los próximos 14 días con la nueva disponibilidad.
+    // Si fallara, el cron nocturno lo corrige; no bloqueamos el guardado por ello.
+    await callEdgeFunction('generate-slots', { property_id: propertyId })
+
+    return { error: null }
   }
 
   return { config, setConfig, loading, saveConfig }

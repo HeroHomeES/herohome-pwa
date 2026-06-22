@@ -19,21 +19,23 @@ CREATE EXTENSION IF NOT EXISTS pg_net  WITH SCHEMA extensions;
 
 
 -- ================================================================
--- CRON 1 — generate-monthly-slots
--- Día 20 de cada mes a las 00:00 UTC
+-- CRON 1 — generate-daily-slots
+-- Diario a las 03:00 UTC (después del cleanup de las 02:00)
 -- Llama a la Edge Function generate-slots (modo cron: sin property_id)
--- para regenerar los slots de las próximas 4 semanas en todas las
--- propiedades con status = 'On Sale'.
+-- para SINCRONIZAR la ventana móvil de 14 días en todas las propiedades
+-- con status = 'On sale': crea los slots que falten (incluido el nuevo
+-- día que entra en la ventana) y borra los 'Available' obsoletos.
+-- Nunca toca reservas (Pending/Confirmed) ni slots bloqueados.
 -- ================================================================
 
--- Desregistrar si ya existe (hace el script idempotente)
+-- Desregistrar el cron mensual antiguo (obsoleto) y el diario si ya existe
 SELECT cron.unschedule(jobid)
 FROM cron.job
-WHERE jobname = 'generate-monthly-slots';
+WHERE jobname IN ('generate-monthly-slots', 'generate-daily-slots');
 
 SELECT cron.schedule(
-  'generate-monthly-slots',           -- nombre del job
-  '0 0 20 * *',                       -- día 20 de cada mes, 00:00 UTC
+  'generate-daily-slots',             -- nombre del job
+  '0 3 * * *',                        -- diario a las 03:00 UTC
   $$
   SELECT net.http_post(
     url     := 'https://zqkvcphtqmibttgnivku.supabase.co/functions/v1/generate-slots',
@@ -123,7 +125,7 @@ SELECT
   command
 FROM cron.job
 WHERE jobname IN (
-  'generate-monthly-slots',
+  'generate-daily-slots',
   'cleanup-old-slots',
   'complete-visits'
 )

@@ -126,7 +126,7 @@ src/
 |---------|---------|--------|
 | `create-user` | HTTP POST desde Salesforce Flow 1 | ✅ Completada |
 | `send-welcome-email` | Interna desde create-user | ✅ Completada |
-| `generate-slots` | Cron día 20 + manual | ✅ Completada |
+| `generate-slots` | Cron diario 03:00 UTC + on-save (PWA) | ✅ v3.1: sincroniza ventana móvil de 14 días (idempotente) |
 | `cleanup-slots` | Cron diario 02:00 | ✅ Completada |
 | `get-available-slots` | Tool de whatsapp-agent | ✅ Completada |
 | `request-visit-slot` | Tool de whatsapp-agent | ✅ Completada |
@@ -197,6 +197,24 @@ src/
 ---
 
 ## Registro de sesiones
+
+### 22 junio 2026 — Rediseño de la generación de slots (ventana móvil de 14 días)
+
+**Problema detectado:** `generate-slots` corría solo el día 20 (cron `generate-monthly-slots`) y generaba 28 días → una vivienda dada de alta el día 21 no tenía slots hasta el mes siguiente. Y dos bugs vivos: (1) el filtro del cron usaba `status = 'On Sale'` pero la BD tiene `'On sale'` → **el cron no generaba NADA para ninguna vivienda**; (2) la PWA guardaba `availability_config` pero **nunca disparaba la generación** de slots.
+
+**Modelo nuevo — sincronización de ventana móvil:** `generate-slots` ahora SINCRONIZA una ventana de hoy + 14 días por vivienda, idempotente:
+- **Crea** los slots de la config que falten (solo si esa hora no tiene ya un slot, de cualquier estado → no duplica reservas).
+- **Borra** los `Available` futuros que ya no encajan con la config o que quedan fuera de la ventana (refleja reducciones de disponibilidad y recorta sobrantes a 2 semanas).
+- **Nunca** toca `Pending to confirm` / `Confirmed` / bloqueados.
+- Descartado "generar solo el día +14" (frágil: una noche fallida deja un hueco permanente) y "borrar todo Available y regenerar" (duplicaría slots a horas ya reservadas → doble reserva).
+
+**Disparadores:**
+- Cron **`generate-daily-slots`** a las **03:00 UTC** (tras `cleanup-old-slots` de 02:00) → modo cron, todas las viviendas `On sale`. Auto-reparable: si una noche falla, la siguiente rellena los huecos.
+- PWA `useAvailability.saveConfig` → llama a `generate-slots` (modo single-property, ownership check por JWT) al pulsar "Guardar disponibilidad" → slots inmediatos.
+
+**Cambios:** `generate-slots/index.ts` (lógica de sync, `DAYS_AHEAD` 28→14, fix `'On sale'`); `src/hooks/useAvailability.ts` (llama a generate-slots tras guardar); `supabase/sql/setup-crons.sql` (`generate-monthly-slots` día 20 → `generate-daily-slots` diario 03:00 UTC). `cleanup-old-slots` (02:00 UTC) sin cambios. **Pendiente: aplicar a mano el SQL del nuevo cron** (MCP read-only) y probar re-guardando disponibilidad en la PWA.
+
+---
 
 ### 15 junio 2026 — B5: código de whatsapp-agent y process-idealista-lead
 

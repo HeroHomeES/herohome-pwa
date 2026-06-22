@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
 const TZ = "Europe/Madrid"
-const DAYS_AHEAD = 28
+const DAYS_AHEAD = 14 // días hacia delante: ventana móvil de hoy + 14 días (~2 semanas)
 
 interface AvailabilityEntry {
   day_of_week: number // 0=Lunes, 6=Domingo
@@ -94,7 +94,13 @@ function getUserIdFromJWT(token: string): string | null {
   }
 }
 
-// Deletes future 'available' slots and generates new ones for the next DAYS_AHEAD days.
+// Sincroniza los slots de la vivienda con su disponibilidad, en una ventana móvil
+// de hoy + DAYS_AHEAD días. Idempotente y seguro para ejecutar a diario:
+//  - NUNCA toca slots reservados/bloqueados (status != 'Available').
+//  - Borra los 'Available' futuros que ya no encajan con la config o que quedan
+//    fuera de la ventana (refleja reducciones de disponibilidad y recorta sobrantes).
+//  - Crea los slots de la config que falten, SOLO si esa hora no tiene ya un slot
+//    de cualquier estado (evita duplicar visitas en curso → sin doble reserva).
 async function processProperty(
   supabase: ReturnType<typeof createClient>,
   propertyId: string,
@@ -103,33 +109,15 @@ async function processProperty(
 ): Promise<{ slotsCreated: number; slotsDeleted: number }> {
   const nowISO = nowUTC.toISOString()
 
-  // Delete all future 'available' slots (preserves pending/confirmed/etc.)
-  const { count: deletedCount, error: deleteError } = await supabase
-    .from("visit_slots")
-    .delete({ count: "exact" })
-    .eq("property_id", propertyId)
-    .eq("status", "Available")
-    .gte("start_time", nowISO)
-
-  if (deleteError) throw new Error(`Error borrando slots de ${propertyId}: ${deleteError.message}`)
-
-  const slotsDeleted = deletedCount ?? 0
-
-  // Build a lookup: day_of_week → active entry
   const activeByDay = new Map<number, AvailabilityEntry>()
   for (const entry of config) {
     if (entry.is_active) activeByDay.set(entry.day_of_week, entry)
   }
 
-  if (activeByDay.size === 0) {
-    return { slotsCreated: 0, slotsDeleted }
-  }
-
+  // 1. Conjunto DESEADO de slots (start ISO → {start, end}) en [hoy, hoy+DAYS_AHEAD]
   const madridNow = getMadridParts(nowUTC)
-  const slots: SlotInsert[] = []
-
-  for (let i = 0; i < DAYS_AHEAD; i++) {
-    // Advance i calendar days from today in Madrid by using noon UTC of that ordinal day
+  const desired = new Map<string, { start: string; end: string }>()
+  for (let i = 0; i <= DAYS_AHEAD; i++) {
     const dayRef = new Date(Date.UTC(madridNow.year, madridNow.month - 1, madridNow.day + i, 12))
     const { year, month, day, dayOfWeekMon0 } = getMadridParts(dayRef)
 
@@ -137,27 +125,66 @@ async function processProperty(
     if (!entry) continue
 
     for (let h = entry.from_hour; h < entry.to_hour; h++) {
-      // Skip hours that have already started today
-      if (i === 0 && h <= madridNow.hour) continue
-
+      if (i === 0 && h <= madridNow.hour) continue // no generar horas ya pasadas hoy
       const startUTC = madridLocalToUTC(year, month, day, h)
-      const endUTC = new Date(startUTC.getTime() + 3_600_000)
+      const startISO = startUTC.toISOString()
+      const endISO = new Date(startUTC.getTime() + 3_600_000).toISOString()
+      desired.set(startISO, { start: startISO, end: endISO })
+    }
+  }
 
-      slots.push({
+  // 2. Slots futuros existentes (cualquier estado)
+  const { data: existing, error: fetchError } = await supabase
+    .from("visit_slots")
+    .select("id, start_time, status")
+    .eq("property_id", propertyId)
+    .gte("start_time", nowISO)
+
+  if (fetchError) throw new Error(`Error leyendo slots de ${propertyId}: ${fetchError.message}`)
+
+  const existingStartTimes = new Set<string>()
+  const staleAvailableIds: string[] = []
+  for (const slot of existing ?? []) {
+    const startISO = new Date(slot.start_time as string).toISOString()
+    existingStartTimes.add(startISO)
+    // 'Available' que ya no encaja con la config (o fuera de ventana) → borrar
+    if (slot.status === "Available" && !desired.has(startISO)) {
+      staleAvailableIds.push(slot.id as string)
+    }
+  }
+
+  // 3. Borrar los 'Available' obsoletos / fuera de ventana (nunca reservados)
+  let slotsDeleted = 0
+  if (staleAvailableIds.length > 0) {
+    const { count, error: deleteError } = await supabase
+      .from("visit_slots")
+      .delete({ count: "exact" })
+      .in("id", staleAvailableIds)
+    if (deleteError) throw new Error(`Error borrando slots de ${propertyId}: ${deleteError.message}`)
+    slotsDeleted = count ?? staleAvailableIds.length
+  }
+
+  // 4. Crear los deseados que falten (solo si esa hora no tiene ya un slot)
+  const toInsert: SlotInsert[] = []
+  for (const [startISO, times] of desired) {
+    if (!existingStartTimes.has(startISO)) {
+      toInsert.push({
         property_id: propertyId,
-        start_time: startUTC.toISOString(),
-        end_time: endUTC.toISOString(),
+        start_time: times.start,
+        end_time: times.end,
         status: "Available",
       })
     }
   }
 
-  if (slots.length > 0) {
-    const { error: insertError } = await supabase.from("visit_slots").insert(slots)
+  let slotsCreated = 0
+  if (toInsert.length > 0) {
+    const { error: insertError } = await supabase.from("visit_slots").insert(toInsert)
     if (insertError) throw new Error(`Error insertando slots de ${propertyId}: ${insertError.message}`)
+    slotsCreated = toInsert.length
   }
 
-  return { slotsCreated: slots.length, slotsDeleted }
+  return { slotsCreated, slotsDeleted }
 }
 
 Deno.serve(async (req: Request) => {
@@ -243,7 +270,7 @@ Deno.serve(async (req: Request) => {
       const { data: onSaleProps, error: propsError } = await supabase
         .from("properties")
         .select("id")
-        .eq("status", "On Sale")
+        .eq("status", "On sale")
 
       if (propsError) throw new Error(propsError.message)
 
