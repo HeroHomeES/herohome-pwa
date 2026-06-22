@@ -212,7 +212,9 @@ src/
 - Cron **`generate-daily-slots`** a las **03:00 UTC** (tras `cleanup-old-slots` de 02:00) → modo cron, todas las viviendas `On sale`. Auto-reparable: si una noche falla, la siguiente rellena los huecos.
 - PWA `useAvailability.saveConfig` → llama a `generate-slots` (modo single-property, ownership check por JWT) al pulsar "Guardar disponibilidad" → slots inmediatos.
 
-**Cambios:** `generate-slots/index.ts` (lógica de sync, `DAYS_AHEAD` 28→14, fix `'On sale'`); `src/hooks/useAvailability.ts` (llama a generate-slots tras guardar); `supabase/sql/setup-crons.sql` (`generate-monthly-slots` día 20 → `generate-daily-slots` diario 03:00 UTC). `cleanup-old-slots` (02:00 UTC) sin cambios. **Pendiente: aplicar a mano el SQL del nuevo cron** (MCP read-only) y probar re-guardando disponibilidad en la PWA.
+**Cambios:** `generate-slots/index.ts` (lógica de sync, `DAYS_AHEAD` 28→14, fix `'On sale'`); `src/hooks/useAvailability.ts` (llama a generate-slots tras guardar); `supabase/sql/setup-crons.sql` (`generate-monthly-slots` día 20 → `generate-daily-slots` diario 03:00 UTC). `cleanup-old-slots` (02:00 UTC) sin cambios.
+
+**Aplicado y validado (22 junio):** cron `generate-daily-slots` registrado (jobid 12, 03:00 UTC) y `generate-monthly-slots` eliminado. Probado en producción end-to-end: al guardar disponibilidad desde la PWA (config Jue 18h / Vie-Sáb 10-14h) la ventana de 14 días se sincronizó correctamente → se borraron los días quitados (L/M/X), se generaron los slots horarios de la config (Vie/Sáb 10:00-13:00), sin duplicados y conservando la visita confirmada de Roberto. Nota operativa: el Service Worker de la PWA cachea; para ver cambios de la PWA al instante hay que recargar/usar incógnito hasta que el SW se actualice.
 
 ---
 
