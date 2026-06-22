@@ -83,7 +83,7 @@ Deno.serve(async (req: Request) => {
   // 2. Datos de la propiedad
   const { data: property } = await supabase
     .from("properties")
-    .select("street, city, state")
+    .select("street, city")
     .eq("id", slot.property_id)
     .single()
 
@@ -96,7 +96,7 @@ Deno.serve(async (req: Request) => {
 
   const firstName = slot.visitor_name || "Visitante"
   const address =
-    [property?.street, property?.city, property?.state].filter(Boolean).join(", ") || "la vivienda"
+    [property?.street, property?.city].filter(Boolean).join(", ") || "la vivienda"
   const dateTime = formatMadrid(slot.start_time)
 
   const result: { whatsapp: string | null; email: string | null } = { whatsapp: null, email: null }
