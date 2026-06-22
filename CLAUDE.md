@@ -216,6 +216,10 @@ src/
 
 **Aplicado y validado (22 junio):** cron `generate-daily-slots` registrado (jobid 12, 03:00 UTC) y `generate-monthly-slots` eliminado. Probado en producción end-to-end: al guardar disponibilidad desde la PWA (config Jue 18h / Vie-Sáb 10-14h) la ventana de 14 días se sincronizó correctamente → se borraron los días quitados (L/M/X), se generaron los slots horarios de la config (Vie/Sáb 10:00-13:00), sin duplicados y conservando la visita confirmada de Roberto. Nota operativa: el Service Worker de la PWA cachea; para ver cambios de la PWA al instante hay que recargar/usar incógnito hasta que el SW se actualice.
 
+### 22 junio 2026 — Plantillas WhatsApp aprobadas + fix idioma (es_ES)
+
+Las 3 plantillas (`bienvenida_pc`, `visita_confirmada`, `visita_cancelada`) se aprobaron en Meta, pero creadas con idioma **Spanish (Spain) = `es_ES`**, mientras el código pedía `es` → error 132001 ("template name does not exist in es"). **Fix:** idioma por defecto centralizado en `_shared/send-whatsapp.ts` → **`es_ES`** (y eliminado el `languageCode` explícito de `process-idealista-lead` y `notify-visit`). ⚠️ Toda plantilla nueva debe crearse en `es_ES` (o ajustar ese default). `process-idealista-lead` ahora devuelve `whatsapp_error` en la respuesta de alerta (observabilidad). **Camino feliz validado:** lead simulado (número real + ref Santander) → `bienvenida_pc` entregada + conversación sembrada (conv `13bb6fd7`).
+
 ---
 
 ### 15 junio 2026 — B5: código de whatsapp-agent y process-idealista-lead

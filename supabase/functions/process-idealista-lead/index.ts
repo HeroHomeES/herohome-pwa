@@ -225,7 +225,6 @@ Deno.serve(async (req: Request) => {
   const whatsappResult = await sendWhatsAppTemplate({
     to: waPhoneNumber,
     templateName: WHATSAPP_WELCOME_TEMPLATE_NAME,
-    languageCode: "es",
     bodyParams: propertyLabel ? [propertyLabel] : undefined,
   })
 
@@ -236,7 +235,7 @@ Deno.serve(async (req: Request) => {
       body.body,
       extracted as unknown as Record<string, unknown>
     )
-    return jsonResponse({ success: false, alerted: true, extracted }, 200)
+    return jsonResponse({ success: false, alerted: true, extracted, whatsapp_error: whatsappResult.error }, 200)
   }
 
   const now = new Date().toISOString()

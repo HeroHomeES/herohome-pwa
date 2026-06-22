@@ -108,7 +108,6 @@ Deno.serve(async (req: Request) => {
     const template = await sendWhatsAppTemplate({
       to: slot.visitor_phone,
       templateName,
-      languageCode: "es",
       bodyParams: [firstName, address, dateTime],
     })
 
