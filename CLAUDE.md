@@ -135,7 +135,7 @@ src/
 | `notify-visit` | HTTP POST desde PWA | ✅ Reescrita v3.1 (B5): Resend + WhatsApp directo al PC, sin Make |
 | `whatsapp-agent` | Webhook de Meta (GET + POST con HMAC) | ✅ EN VIVO (B5, verify_jwt=false) — webhook conectado y chat entrante probado |
 | `process-idealista-lead` | HTTP POST desde Make Esc. 2 | ✅ Desplegada (B5, verify_jwt=false) — pendiente reconfigurar Make Esc. 2 |
-| `cancel-visit-by-visitor` | Tool de whatsapp-agent | ⬜ Pendiente (B6) |
+| `cancel-visit-by-visitor` | Tool de whatsapp-agent | ✅ Completada (B6): cancela (status → Canceled by visitor) + notifica al CV |
 | `visit-reminders` | Cron diario 09:00 | ⬜ Pendiente (B7) |
 | `manage-offer` | HTTP POST desde PWA | ⬜ Pendiente (B9) |
 | `create-offer` | Tool de whatsapp-agent (gate de honorarios) | ⬜ Pendiente (B9) |
@@ -178,7 +178,10 @@ src/
 - 🔄 Plantillas WhatsApp en Meta (en curso por el usuario) + plantillas email en código.
 - ⬜ Reapuntar webhook de Meta a la Edge Function. Reconfigurar Make Esc. 2. Validación end-to-end.
 
-**B6 — Reagendado PC: ⬜ PENDIENTE** (tools sobre whatsapp-agent)
+**B6 — Reagendado PC: 🔄 EN CURSO** (tools sobre whatsapp-agent)
+- ✅ Tool `cancel_visit_by_visitor` + Edge Function `cancel-visit-by-visitor` (cancela solo visitas propias por teléfono, status → `Canceled by visitor`, notifica al CV vía `notifications` type `visit_canceled` → la PWA lo recibe por Realtime que ya existía en `useNotifications`).
+- ✅ Lógica del agente: tras cancelar con éxito ofrece reagendar (prompt + reutiliza `get_available_slots`).
+- ⬜ Pendiente probar el flujo end-to-end por WhatsApp.
 **B7 — Reagendado CV + Recordatorios: ⬜ PENDIENTE** (visit-reminders con Resend directo)
 **B9 — Gestión de Ofertas: ⬜ PENDIENTE** (manage-offer + tool create_offer con gate de honorarios; bloqueado parcialmente por decisión legal B13)
 **B12 — QA y Lanzamiento: ⬜ PENDIENTE** (RLS, rotación de secrets, pen test incl. HMAC, monitoring)
@@ -197,6 +200,16 @@ src/
 ---
 
 ## Registro de sesiones
+
+### 22 junio 2026 — B6: cancelación de visita por el comprador (PC)
+
+Implementadas las 3 tareas de B6:
+- **Edge Function `cancel-visit-by-visitor`** (verify_jwt=true, x-api-key; misma pauta que request-visit-slot): busca las visitas futuras cancelables del comprador POR SU TELÉFONO (solo las suyas; estados `Pending to confirm`/`Confirmed`), cancela (status → `Canceled by visitor`, update atómico guardado por teléfono+estado anti-carrera) y notifica al CV (`notifications`, type `visit_canceled`). Si hay varias visitas devuelve `needs_selection` con la lista (`display` + `slot_id`); si no hay ninguna, `no_visits`.
+- **Tool `cancel_visit_by_visitor`** en whatsapp-agent: `executeTool` añade `wa_phone_number` + `property_id` del contexto; `slot_id` opcional para desambiguar.
+- **Reagendado**: el prompt indica que, tras cancelar con éxito, ofrezca reagendar reutilizando `get_available_slots`.
+- **Notificación al CV**: NO requirió tocar la PWA — `useNotifications` ya se suscribe por Realtime a los INSERT en `notifications` (`notifications:${user.id}`, postgres_changes) y `MainLayout` ya tiene icono ❌ / etiqueta "Visita cancelada" / ruta para `visit_canceled`. Solo se inserta la fila.
+- Decisión de diseño: la cancelación **NO reabre** el slot (queda `Canceled by visitor`, no vuelve a `Available`), igual que la cancelación por el propietario. Reabrir slots cancelados sería una mejora futura.
+- Pendiente: **prueba end-to-end por WhatsApp** (reservar → cancelar → ver notificación en la PWA + re-oferta de slots).
 
 ### 22 junio 2026 — B5 validado END-TO-END (plantillas + email reales)
 

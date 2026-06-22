@@ -121,7 +121,7 @@ El flujo RGPD del agente de WhatsApp pide consentimiento de privacidad al inicio
 | `notify-visit` | HTTP POST desde PWA | ✅ Reescrita v3.1 (B5): Resend + WhatsApp directo al PC, sin webhook Make |
 | `whatsapp-agent` | **Webhook de Meta (GET verificación + POST mensajes)** | ✅ Desplegada (B5, verify_jwt=false) — pendiente conectar webhook en Meta |
 | `process-idealista-lead` | HTTP POST desde Make Esc. 2 | ✅ Desplegada (B5, verify_jwt=false) — pendiente reconfigurar Make Escenario 2 |
-| `cancel-visit-by-visitor` | Tool del agente | ⬜ Pendiente (B6) |
+| `cancel-visit-by-visitor` | Tool del agente | ✅ Completada (B6): cancela + notifica al CV (Realtime) |
 | `visit-reminders` | Cron diario 09:00 | ⬜ Pendiente (B7) — envía con Resend directo |
 | `manage-offer` | HTTP POST desde PWA | ⬜ Pendiente (B9) — envía con Resend directo |
 | `create-offer` | Tool del agente | ⬜ Pendiente (B9) — con gate de honorarios |

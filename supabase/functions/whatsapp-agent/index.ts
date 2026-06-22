@@ -123,6 +123,22 @@ const TOOLS = [
       required: ["slot_id", "visitor_name", "visitor_last_name", "visitor_email", "consent_given"],
     },
   },
+  {
+    name: "cancel_visit_by_visitor",
+    description:
+      "Cancela la visita que el comprador tiene reservada para esta vivienda. Úsala cuando el comprador pida cancelar o anular su visita. Si tiene varias visitas y aún no ha dicho cuál, llámala SIN slot_id: devolverá la lista (campo visits, con display y slot_id) para que le preguntes cuál cancelar.",
+    input_schema: {
+      type: "object",
+      properties: {
+        slot_id: {
+          type: "string",
+          description:
+            "ID del horario a cancelar. Solo necesario si el comprador tiene varias visitas y ya ha elegido cuál (lo obtienes del campo slot_id del resultado previo de esta misma tool).",
+        },
+      },
+      required: [],
+    },
+  },
 ]
 
 // --- Internal Edge Function calls (tools) ---
@@ -188,6 +204,22 @@ async function executeTool(
     return { http_status: status, ...data }
   }
 
+  if (name === "cancel_visit_by_visitor") {
+    if (!context.propertyId) {
+      return { error: "No hay una vivienda asociada a esta conversación todavía." }
+    }
+    const reqBody: Record<string, unknown> = {
+      wa_phone_number: context.waPhoneNumber,
+      property_id: context.propertyId,
+    }
+    if (typeof input.slot_id === "string") reqBody.slot_id = input.slot_id
+    const { data } = await callInternalFunction("cancel-visit-by-visitor", {
+      method: "POST",
+      body: JSON.stringify(reqBody),
+    })
+    return data
+  }
+
   return { error: `Unknown tool: ${name}` }
 }
 
@@ -229,7 +261,7 @@ function buildSystemPrompt(property: { street?: string; city?: string; sales_pri
 
 ${propertyContext}
 
-Tu objetivo es ayudar al comprador a consultar disponibilidad de visitas y reservar una.
+Tu objetivo es ayudar al comprador a consultar disponibilidad de visitas, reservar una, y cancelar o reagendar su visita si lo necesita.
 
 Reglas importantes:
 - NUNCA digas que una visita está reservada o confirmada salvo que la tool request_visit te haya devuelto un resultado de éxito en ESTE mismo turno. Está terminantemente prohibido inventar o anticipar una confirmación.
@@ -239,6 +271,10 @@ Reglas importantes:
   3. Localiza en el resultado el slot_id que corresponde EXACTAMENTE al día y la hora que eligió el comprador.
   4. Llama a request_visit con ese slot_id, el nombre, los apellidos y consent_given.
   5. Confirma la reserva ÚNICAMENTE si request_visit devolvió éxito: dile que su solicitud ha quedado registrada y que el propietario la confirmará en breve, y que recibirá el aviso (por WhatsApp y por email) cuando esté confirmada. Si request_visit devolvió error (p.ej. el hueco ya no está disponible), discúlpate y ofrécele otro horario.
+- Para CANCELAR una visita, usa la tool cancel_visit_by_visitor:
+  - Si devuelve needs_selection (el comprador tiene varias visitas), muéstrale las opciones (usa el campo display de cada una) y pregúntale cuál quiere cancelar; luego vuelve a llamar a la tool con el slot_id elegido.
+  - Si devuelve no_visits, dile amablemente que no consta ninguna visita activa a su nombre.
+  - Si la cancelación tiene ÉXITO, confírmasela y a continuación OFRÉCELE REAGENDAR: llama a get_available_slots y muéstrale los horarios disponibles, preguntándole si quiere reservar una nueva visita. Si acepta, sigue el procedimiento de reserva de arriba.
 - Para mostrar disponibilidad usa get_available_slots y presenta los horarios agrupados por día.
 - No inventes horarios, propiedades ni datos que no provengan de las tools.
 - NUNCA digas que has enviado un email ni que realizas acciones fuera de tus tools: solo puedes consultar horarios y solicitar visitas. El aviso de confirmación al comprador (WhatsApp + email) lo envía el sistema automáticamente cuando el propietario confirma la visita, no tú.
