@@ -1,4 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import { sendEmail } from "../_shared/send-email.ts"
+import { ownerVisitCanceledByVisitorHtml } from "../_shared/email-templates/visit-status.ts"
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
@@ -159,17 +161,20 @@ Deno.serve(async (req: Request) => {
 
   const cancelled = updated[0]
 
-  // Notificar al CV (propietario) — la PWA lo recibe por Realtime (useNotifications)
+  // Notificar al CV (propietario): bell en la PWA (Realtime) + email si la visita
+  // estaba CONFIRMADA (tenía el hueco comprometido).
+  const visitorName = [target.visitor_name, target.visitor_last_name].filter(Boolean).join(" ") || "Un comprador"
+
   const { data: property, error: propError } = await supabase
     .from("properties")
-    .select("user_id")
+    .select("user_id, street, city")
     .eq("id", cancelled.property_id)
     .maybeSingle()
 
   if (propError || !property?.user_id) {
     console.error("[cancel-visit-by-visitor] No se pudo obtener el propietario:", propError?.message)
   } else {
-    const visitorName = [target.visitor_name, target.visitor_last_name].filter(Boolean).join(" ") || "Un comprador"
+    // 1. Notificación in-app — la PWA la recibe por Realtime (useNotifications)
     const { error: notifError } = await supabase.from("notifications").insert({
       user_id: property.user_id,
       type: "visit_canceled",
@@ -185,6 +190,32 @@ Deno.serve(async (req: Request) => {
     })
     if (notifError) {
       console.error("[cancel-visit-by-visitor] Error insertando notificación:", notifError.message)
+    }
+
+    // 2. Email al propietario SOLO si la visita estaba 'Confirmed'
+    if (target.status === "Confirmed") {
+      const { data: owner } = await supabase
+        .from("users")
+        .select("email, first_name")
+        .eq("id", property.user_id)
+        .maybeSingle()
+
+      if (owner?.email) {
+        const address = [property.street, property.city].filter(Boolean).join(", ") || "tu vivienda"
+        const emailRes = await sendEmail({
+          to: owner.email,
+          subject: "Un comprador ha cancelado su visita",
+          html: ownerVisitCanceledByVisitorHtml({
+            ownerName: owner.first_name ?? undefined,
+            visitorName,
+            propertyAddress: address,
+            dateTime: formatMadrid(cancelled.start_time),
+          }),
+        })
+        if (!emailRes.success) {
+          console.error("[cancel-visit-by-visitor] Error enviando email al propietario:", emailRes.error)
+        }
+      }
     }
   }
 

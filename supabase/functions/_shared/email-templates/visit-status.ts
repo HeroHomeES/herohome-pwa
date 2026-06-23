@@ -35,6 +35,28 @@ export function visitCancellationHtml(params: VisitEmailParams): string {
   })
 }
 
+// Email dirigido al PROPIETARIO (CV) cuando un comprador cancela una visita
+// que estaba confirmada.
+export function ownerVisitCanceledByVisitorHtml(params: {
+  ownerName?: string
+  visitorName: string
+  propertyAddress: string
+  dateTime: string
+}): string {
+  const saludo = params.ownerName ? `Hola ${params.ownerName}, ` : "Hola, "
+  return emailShell({
+    accentColor: "#DC2626",
+    heading: "Un comprador ha cancelado su visita",
+    intro: `${saludo}te informamos de que un comprador ha cancelado una visita que tenías confirmada en tu vivienda:`,
+    detailRows: [
+      { label: "Vivienda", value: params.propertyAddress },
+      { label: "Visita cancelada", value: params.dateTime },
+      { label: "Comprador", value: params.visitorName },
+    ],
+    closing: "Puedes consultar el estado de tus visitas en tu panel de Herohome.",
+  })
+}
+
 function emailShell(opts: {
   accentColor: string
   heading: string

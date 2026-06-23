@@ -178,10 +178,11 @@ src/
 - 🔄 Plantillas WhatsApp en Meta (en curso por el usuario) + plantillas email en código.
 - ⬜ Reapuntar webhook de Meta a la Edge Function. Reconfigurar Make Esc. 2. Validación end-to-end.
 
-**B6 — Reagendado PC: 🔄 EN CURSO** (tools sobre whatsapp-agent)
-- ✅ Tool `cancel_visit_by_visitor` + Edge Function `cancel-visit-by-visitor` (cancela solo visitas propias por teléfono, status → `Canceled by visitor`, notifica al CV vía `notifications` type `visit_canceled` → la PWA lo recibe por Realtime que ya existía en `useNotifications`).
-- ✅ Lógica del agente: tras cancelar con éxito ofrece reagendar (prompt + reutiliza `get_available_slots`).
-- ⬜ Pendiente probar el flujo end-to-end por WhatsApp.
+**B6 — Reagendado PC: ✅ COMPLETADO y validado e2e (23 junio)**
+- ✅ Tool `cancel_visit_by_visitor` + Edge Function `cancel-visit-by-visitor` (cancela solo visitas propias por teléfono, status → `Canceled by visitor`).
+- ✅ Aviso al CV: notificación in-app `visit_canceled` (PWA por Realtime) **+ email al propietario** (Resend) cuando la visita cancelada estaba en `Confirmed`.
+- ✅ Lógica del agente: tras cancelar ofrece reagendar (reutiliza `get_available_slots`); reagendar = cancelar 1 vez + reservar (sin re-cancelar).
+- ✅ Validado e2e por WhatsApp: reservar → confirmar → cancelar por PC → reagendar → confirmar, con notificaciones y emails. Requirió agente en **Sonnet 4.6** + guardarraíl anti-alucinación + reset de historial contaminado.
 **B7 — Reagendado CV + Recordatorios: ⬜ PENDIENTE** (visit-reminders con Resend directo)
 **B9 — Gestión de Ofertas: ⬜ PENDIENTE** (manage-offer + tool create_offer con gate de honorarios; bloqueado parcialmente por decisión legal B13)
 **B12 — QA y Lanzamiento: ⬜ PENDIENTE** (RLS, rotación de secrets, pen test incl. HMAC, monitoring)
