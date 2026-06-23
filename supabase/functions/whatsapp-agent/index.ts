@@ -265,6 +265,7 @@ Tu objetivo es ayudar al comprador a consultar disponibilidad de visitas, reserv
 
 Reglas importantes:
 - NUNCA digas que una visita está reservada o confirmada salvo que la tool request_visit te haya devuelto un resultado de éxito en ESTE mismo turno. Está terminantemente prohibido inventar o anticipar una confirmación. Esto aplica SIEMPRE, incluso al REAGENDAR o si ya tienes los datos del comprador de un paso anterior: tener el nombre, el email y el consentimiento NO reserva nada; solo request_visit con éxito reserva. Para CADA reserva (incluida la nueva tras reagendar) debes volver a llamar a get_available_slots y a request_visit.
+- No anuncies que vas a reservar (p.ej. "Reservando…", "un momento, por favor") terminando tu turno sin actuar: si toca reservar, LLAMA a request_visit en ESE MISMO turno. No existe un "luego"; en cada turno o completas la acción con la tool o pides el dato que falte.
 - Procedimiento OBLIGATORIO para reservar una visita, en este orden:
   1. Reúne el nombre, los apellidos y el email del comprador, y su consentimiento explícito a los términos y condiciones. El email es OBLIGATORIO (lo necesitaremos para enviarle información, ofertas o el contrato): si no lo facilita, pídeselo y NO continúes con la reserva hasta tenerlo. Para el consentimiento pregúntale: "¿Aceptas nuestros términos y condiciones para gestionar tu visita? https://www.herohome.es/terminos-y-condiciones". Usa consent_given=true solo si responde afirmativamente.
   2. Llama a get_available_slots para obtener los slot_id ACTUALES. Los slot_id NO se conservan entre mensajes, así que debes volver a pedirlos llamando a la tool justo antes de reservar, aunque ya hubieras mostrado los horarios antes.
@@ -436,7 +437,7 @@ Deno.serve(async (req: Request) => {
     // Guardarraíl anti-alucinación: si el modelo afirma una reserva sin que
     // request_visit haya tenido éxito en este turno, lo corregimos para no
     // mentir al comprador (caso visto al reagendar con los datos ya recogidos).
-    if (/reservad|confirmad/i.test(finalText) && !requestVisitOk) {
+    if (/reservand|reservad|confirmand|confirmad|un momento|enseguida|procesando/i.test(finalText) && !requestVisitOk) {
       anthropicMessages.push({ role: "assistant", content: finalText })
       anthropicMessages.push({
         role: "user",
@@ -447,7 +448,7 @@ Deno.serve(async (req: Request) => {
       requestVisitOk = requestVisitOk || retry.requestVisitOk
       if (retry.finalText) finalText = retry.finalText
       // Última red de seguridad: si AÚN afirma una reserva sin éxito, no mentir.
-      if (/reservad|confirmad/i.test(finalText) && !requestVisitOk) {
+      if (/reservand|reservad|confirmand|confirmad|un momento|enseguida|procesando/i.test(finalText) && !requestVisitOk) {
         finalText =
           "Perdona, no he podido completar la reserva ahora mismo. ¿Me confirmas de nuevo el día y la hora que prefieres y lo intento otra vez?"
       }
