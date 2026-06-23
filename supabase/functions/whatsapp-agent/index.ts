@@ -10,7 +10,8 @@ const META_APP_SECRET = Deno.env.get("META_APP_SECRET")!
 const WHATSAPP_VERIFY_TOKEN = Deno.env.get("WHATSAPP_VERIFY_TOKEN")!
 
 const FUNCTIONS_BASE_URL = `${SUPABASE_URL}/functions/v1`
-const CLAUDE_MODEL = "claude-haiku-4-5"
+// Sonnet 4.6: mejor disciplina de tool-calling que Haiku para el agente conversacional.
+const CLAUDE_MODEL = "claude-sonnet-4-6"
 const MAX_TOOL_ITERATIONS = 5
 
 const corsHeaders = {

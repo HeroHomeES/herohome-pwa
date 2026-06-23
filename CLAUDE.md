@@ -19,7 +19,7 @@ Herohome es la primera agencia inmobiliaria 100% digital de España. Propietario
 - **CV** (Cliente Vendedor): propietario con contrato. Accede a la PWA.
 - **PC** (Prospecto Comprador): interesado en comprar. Solo interactúa vía WhatsApp.
 - **PV** (Prospecto Vendedor): sin contrato. No accede a la PWA.
-- **Hero**: agente IA (Claude Haiku 4.5, Anthropic API). Instancia activa: Agente WhatsApp (`whatsapp-agent`). El Agente PWA está aplazado (B10).
+- **Hero**: agente IA (Claude Sonnet 4.6, Anthropic API). Instancia activa: Agente WhatsApp (`whatsapp-agent`). El Agente PWA está aplazado (B10). Diseño documentado en `docs/AGENT.md`.
 - **Agente Herohome**: persona humana para tareas no automatizables. Opera con el Table Editor de Supabase + vistas SQL (el Dashboard completo está aplazado, B8).
 
 ---
@@ -30,12 +30,12 @@ Herohome es la primera agencia inmobiliaria 100% digital de España. Propietario
 |------|-----------|
 | PWA Frontend (CV) | React 18 + Vite + TypeScript + Tailwind CSS — **este repo** |
 | Backend / BD / Lógica | Supabase (PostgreSQL + Auth + Edge Functions + Cron) |
-| Agente WhatsApp | Edge Function `whatsapp-agent` (Claude Haiku 4.5, tool calling) |
+| Agente WhatsApp | Edge Function `whatsapp-agent` (Claude Sonnet 4.6, tool calling) — ver `docs/AGENT.md` |
 | CRM | Salesforce Enterprise + Docs/Sign Made Easy — **CONGELADO: no añadir nada** |
 | Email transaccional (CV y PC) | Resend desde Edge Functions (plantillas HTML en código) |
 | Make.com | SOLO: Esc. 1 (form web → Lead SF) y Esc. 2 (Gmail Idealista → Edge Function) |
 | WhatsApp | WhatsApp Cloud API (Meta) — webhook apunta a `whatsapp-agent` |
-| IA | Anthropic API — modelo `claude-haiku-4-5` |
+| IA | Anthropic API — agente WhatsApp `claude-sonnet-4-6`; extracción Idealista `claude-haiku-4-5` |
 | Hosting | Vercel (auto-deploy desde GitHub) |
 | Dashboard Operaciones | APLAZADO (B8) — interim: Supabase Table Editor + vistas SQL |
 
@@ -145,7 +145,7 @@ src/
 ### Secrets de Supabase (estado objetivo v3.1)
 - `RESEND_API_KEY` (pendiente rotación, B12)
 - `PWA_BASE_URL` (`https://app.herohome.es`)
-- `ANTHROPIC_API_KEY` — NUEVO (whatsapp-agent y process-idealista-lead, modelo `claude-haiku-4-5`)
+- `ANTHROPIC_API_KEY` — NUEVO (whatsapp-agent → `claude-sonnet-4-6`; process-idealista-lead → `claude-haiku-4-5`)
 - `META_APP_SECRET` — NUEVO (validación HMAC)
 - `WHATSAPP_VERIFY_TOKEN` — NUEVO (verificación GET del webhook de Meta, string propio)
 - `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID` — envío Cloud API
@@ -200,6 +200,13 @@ src/
 ---
 
 ## Registro de sesiones
+
+### 23 junio 2026 — Agente a Sonnet 4.6 + guardarraíl anti-alucinación + AGENT.md
+
+Probando B6, Haiku 4.5 falló DOS veces la disciplina de tool-calling: (1) alucinó "tu visita está reservada" sin llamar a `request_visit`; (2) "narró" la reserva ("Reservando… un momento") y terminó el turno sin actuar (conversación colgada).
+- **Guardarraíl en código** (`runToolLoop` + post-chequeo en whatsapp-agent): si el texto final afirma/"narra" una reserva (`reservand|reservad|confirmand|confirmad|un momento|enseguida|procesando`) pero `request_visit` NO tuvo éxito en el turno, se inyecta una corrección al modelo y se reintenta el loop; si aún así afirma una reserva, se sustituye por un mensaje seguro. Protege con cualquier modelo.
+- **Modelo del agente: Haiku 4.5 → `claude-sonnet-4-6`** (mejor disciplina de tools, menos alucinación). `process-idealista-lead` sigue en `claude-haiku-4-5` (extracción simple de una sola llamada).
+- **Nuevo `docs/AGENT.md`**: documenta cómo está modelado Hero (persona, objetivos, contexto inyectado, reglas, procedimientos, tools, loop+guardarraíl, y dónde tocar para iterarlo).
 
 ### 22 junio 2026 — B6: cancelación de visita por el comprador (PC)
 
@@ -304,6 +311,7 @@ Con la env var ya corregida, el primer clic en el magic link SÍ autenticaba cor
 ## Documentos de referencia
 
 - `ARCHITECTURE_V3_DECISIONS.md` — decisiones arquitectónicas v3.1 (en este repo, AUTORITATIVO).
+- `docs/AGENT.md` — diseño del agente conversacional Hero (WhatsApp): persona, objetivos, reglas, tools, loop.
 - `docs/SPEC.md` — especificación técnica (revisar contra v3.1 antes de usar).
 - **Plan de tareas v3.1** — Google Sheets (hojas: Plan v3.1 / Cambios v3.0→v3.1 / Camino crítico / Resumen).
 - DESIGN.md, Arquitectura Técnica, modelos de datos — Google Drive.

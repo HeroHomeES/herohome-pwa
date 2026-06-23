@@ -30,7 +30,7 @@ Webhook de Meta (mensajes entrantes WhatsApp)
       1. GET: responde al hub.challenge de verificación de Meta
       2. POST: valida firma HMAC X-Hub-Signature-256 (META_APP_SECRET)
       3. Recupera historial (get-conversation-history / tabla whatsapp_conversations)
-      4. Loop de tool calling con Claude Haiku 4.5 (Anthropic API)
+      4. Loop de tool calling con Claude Sonnet 4.6 (Anthropic API)
       5. Tools v1: get_available_slots, request_visit
          Tools v2 (B6/B9): cancel_visit_by_visitor, create_offer
       6. Persiste mensajes (save-message)
@@ -131,7 +131,7 @@ El flujo RGPD del agente de WhatsApp pide consentimiento de privacidad al inicio
 ### Secrets de Supabase (estado objetivo v3.1)
 - `RESEND_API_KEY` (rotar: tarea B12)
 - `PWA_BASE_URL`
-- `ANTHROPIC_API_KEY` (nuevo — whatsapp-agent y process-idealista-lead, modelo `claude-haiku-4-5`)
+- `ANTHROPIC_API_KEY` (nuevo — whatsapp-agent → `claude-sonnet-4-6`; process-idealista-lead → `claude-haiku-4-5`)
 - `META_APP_SECRET` (nuevo — validación HMAC del webhook)
 - `WHATSAPP_VERIFY_TOKEN` (nuevo — string propio elegido por nosotros, para la verificación GET del webhook de Meta)
 - `WHATSAPP_TOKEN` y `WHATSAPP_PHONE_NUMBER_ID` (envío Cloud API)
