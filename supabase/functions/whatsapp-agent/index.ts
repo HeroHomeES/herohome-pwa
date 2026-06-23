@@ -438,7 +438,7 @@ Deno.serve(async (req: Request) => {
     // Guardarraíl anti-alucinación: si el modelo afirma una reserva sin que
     // request_visit haya tenido éxito en este turno, lo corregimos para no
     // mentir al comprador (caso visto al reagendar con los datos ya recogidos).
-    if (/reservand|reservad|confirmand|confirmad|un momento|enseguida|procesando/i.test(finalText) && !requestVisitOk) {
+    if (/(reserv|solicit|agend|confirm|registr)\w*(ad|and)|un momento|enseguida|procesando/i.test(finalText) && !requestVisitOk) {
       anthropicMessages.push({ role: "assistant", content: finalText })
       anthropicMessages.push({
         role: "user",
@@ -449,7 +449,7 @@ Deno.serve(async (req: Request) => {
       requestVisitOk = requestVisitOk || retry.requestVisitOk
       if (retry.finalText) finalText = retry.finalText
       // Última red de seguridad: si AÚN afirma una reserva sin éxito, no mentir.
-      if (/reservand|reservad|confirmand|confirmad|un momento|enseguida|procesando/i.test(finalText) && !requestVisitOk) {
+      if (/(reserv|solicit|agend|confirm|registr)\w*(ad|and)|un momento|enseguida|procesando/i.test(finalText) && !requestVisitOk) {
         finalText =
           "Perdona, no he podido completar la reserva ahora mismo. ¿Me confirmas de nuevo el día y la hora que prefieres y lo intento otra vez?"
       }
