@@ -13,3 +13,8 @@ verify_jwt = false
 # visit-reminders lo invoca el cron (pg_cron) con x-api-key, sin JWT de Supabase.
 [functions.visit-reminders]
 verify_jwt = false
+
+# generate-slots: el cron la llama con x-api-key (modo todas las viviendas) y la PWA
+# con JWT de usuario (modo single-property; el ownership se valida en la función).
+[functions.generate-slots]
+verify_jwt = false

@@ -40,8 +40,8 @@ SELECT cron.schedule(
   SELECT net.http_post(
     url     := 'https://zqkvcphtqmibttgnivku.supabase.co/functions/v1/generate-slots',
     headers := jsonb_build_object(
-      'Content-Type',  'application/json',
-      'Authorization', 'Bearer TU_SERVICE_ROLE_KEY_AQUI'
+      'Content-Type', 'application/json',
+      'x-api-key',    'TU_HEROHOME_API_KEY_AQUI'
     ),
     body    := '{}'::jsonb
   );

@@ -2,6 +2,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+const HEROHOME_API_KEY = Deno.env.get("HEROHOME_API_KEY")!
 const TZ = "Europe/Madrid"
 const DAYS_AHEAD = 14 // días hacia delante: ventana móvil de hoy + 14 días (~2 semanas)
 
@@ -199,42 +200,60 @@ Deno.serve(async (req: Request) => {
     })
   }
 
-  // Parse body — empty body = cron mode
+  // Auth: el cron usa x-api-key (modo todas las viviendas); la PWA usa el JWT del
+  // usuario (modo single-property, con verificación de propiedad).
+  const apiKey = req.headers.get("x-api-key")
+  const isCron = !!apiKey && apiKey === HEROHOME_API_KEY
+
+  // Parse body — sin property_id = modo cron
   let propertyId: string | null = null
   try {
     const body = await req.json()
     propertyId = body?.property_id ?? null
   } catch {
-    // intentional: empty or missing body triggers cron mode
+    // intencional: body vacío/ausente = modo cron
+  }
+
+  // Modo cron (todas las viviendas): requiere x-api-key.
+  if (!propertyId && !isCron) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    })
   }
 
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
-  // Verify property ownership when called with a user JWT (not service role)
-  if (propertyId) {
+  // Modo single-property (PWA): exige JWT de usuario válido y que sea el dueño.
+  if (propertyId && !isCron) {
     const token = (req.headers.get("Authorization") ?? "").replace("Bearer ", "")
     const userId = getUserIdFromJWT(token)
 
-    if (userId) {
-      const { data: prop, error: propError } = await supabase
-        .from("properties")
-        .select("user_id")
-        .eq("id", propertyId)
-        .maybeSingle()
+    if (!userId) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      })
+    }
 
-      if (propError) {
-        return new Response(JSON.stringify({ error: propError.message }), {
-          status: 500,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        })
-      }
+    const { data: prop, error: propError } = await supabase
+      .from("properties")
+      .select("user_id")
+      .eq("id", propertyId)
+      .maybeSingle()
 
-      if (!prop || prop.user_id !== userId) {
-        return new Response(JSON.stringify({ error: "Forbidden" }), {
-          status: 403,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        })
-      }
+    if (propError) {
+      return new Response(JSON.stringify({ error: propError.message }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      })
+    }
+
+    if (!prop || prop.user_id !== userId) {
+      return new Response(JSON.stringify({ error: "Forbidden" }), {
+        status: 403,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      })
     }
   }
 

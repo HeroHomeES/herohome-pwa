@@ -212,7 +212,9 @@ src/
 - **Nueva Edge Function `visit-reminders`** (verify_jwt=false, x-api-key): cron diario 07:00 UTC (~09:00 Madrid) → busca visitas `Confirmed` cuya fecha local Madrid es la de MAÑANA y envía recordatorio: al PC plantilla WhatsApp `recordatorio_visita` + email (`visitReminderPcHtml`); al CV email (`visitReminderCvHtml`). Dedup natural por la ventana "mañana" (cada visita se recuerda una vez, sin columna extra). Validado por curl (visits_found=0 hoy, auth x-api-key OK).
 - **Cron `visit-reminders`** añadido a `setup-crons.sql` (CRON 4, `0 7 * * *`, con x-api-key) — pendiente aplicar a mano.
 - **Plantilla Meta `recordatorio_visita`** (es_ES, 3 vars: nombre/dirección/fecha-hora) — pendiente crear/aprobar.
-- Decisión de auth del cron: **x-api-key** (no Bearer service_role), más robusto. ⚠️ Visto un **401 de `generate-slots`** en los logs → el cron `generate-daily-slots` (Bearer service_role) podría estar fallando la auth; pendiente de revisar (haría que la generación nocturna de slots no se ejecute, aunque la on-save sí funciona).
+- Decisión de auth del cron: **x-api-key** (no Bearer service_role), más robusto.
+- **Arreglado el fallo del cron de slots (401):** `generate-slots` ahora acepta **`x-api-key` en modo cron** (verify_jwt=false; el modo single-property de la PWA sigue con JWT + ownership, ahora exigiendo userId válido). Validado por curl (`properties_processed: 1`; sin key → 401). El cron `generate-daily-slots` se cambia a x-api-key en `setup-crons.sql` → **pendiente re-ejecutar ese SQL**. Nota: bajar verify_jwt en generate-slots deja el ownership del modo PWA sobre un JWT no verificado por el gateway (riesgo bajo: solo permitiría regenerar slots de otra vivienda; sin fuga de datos) — endurecer a futuro si se quiere.
+- **Corregido el orden de variables** del WhatsApp de recordatorio: la plantilla del usuario es `{{1}}`=nombre, `{{2}}`=fecha, `{{3}}`=dirección → `visit-reminders` envía `bodyParams` en ese orden.
 
 ### 23 junio 2026 — B6 COMPLETO (resumen consolidado): cancelación por el PC + reagendado
 

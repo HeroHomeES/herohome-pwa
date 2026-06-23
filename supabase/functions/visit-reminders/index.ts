@@ -103,10 +103,11 @@ Deno.serve(async (req: Request) => {
 
     // ── Recordatorio al COMPRADOR (PC): WhatsApp (plantilla) + email ──
     if (v.visitor_phone) {
+      // Orden de la plantilla recordatorio_visita: {{1}}=nombre, {{2}}=fecha, {{3}}=dirección
       const wa = await sendWhatsAppTemplate({
         to: v.visitor_phone,
         templateName: TEMPLATE_REMINDER,
-        bodyParams: [firstName, address, dateTime],
+        bodyParams: [firstName, dateTime, address],
       })
       if (!wa.success) {
         console.error(`[visit-reminders] WhatsApp recordatorio falló para ${v.visitor_phone}: ${wa.error}`)
