@@ -14,6 +14,55 @@ const FUNCTIONS_BASE_URL = `${SUPABASE_URL}/functions/v1`
 const CLAUDE_MODEL = "claude-sonnet-4-6"
 const MAX_TOOL_ITERATIONS = 5
 
+// --- Gate de honorarios del comprador (B13 → integrado en B5) ---
+
+// % de comisión del comprador por defecto si la vivienda no tiene valor (1 = 1%).
+const DEFAULT_BUYER_FEE_PERCENT = 1
+
+// Texto de honorarios (plantilla categoría UTILITY). Lo construye el CÓDIGO con el
+// porcentaje de la vivienda (properties.buyer_fee_percent): NO lo genera ni lo
+// parafrasea el LLM. Se envía verbatim al PC y se guarda en consents.consent_text
+// para trazabilidad legal. El % es invariable por vivienda (decisión de negocio).
+function formatFeePercent(pct: number): string {
+  // 1 → "1"; 0.5 → "0,5" (coma decimal en español, sin ceros sobrantes).
+  return Number.isInteger(pct) ? String(pct) : String(pct).replace(".", ",")
+}
+
+function buildFeeMessage(pct: number): string {
+  return `Antes de confirmar tu visita, necesito que conozcas las condiciones del servicio:
+
+Herohome cobra una comisión del ${formatFeePercent(pct)}% sobre el precio de venta al comprador. Esta comisión se devenga si formalizas una oferta de compra sobre esta propiedad que es aceptada por el vendedor.
+
+Puedes consultar las condiciones completas en: herohome.es/honorarios
+
+¿Aceptas estas condiciones para continuar? Responde SÍ para confirmar tu visita.`
+}
+
+const FEE_CONSENT_TYPE = "buyer_fee_acknowledgement"
+
+// Mensaje cuando el PC RECHAZA los honorarios (o segundo mensaje ambiguo).
+const FEE_GATE_REJECTION_MESSAGE =
+  "Entendido, no hay problema. Si cambias de opinión o quieres saber más sobre cómo funciona Herohome, escríbeme cuando quieras."
+
+// Mensaje cuando falla técnicamente el registro del consentimiento.
+const FEE_GATE_ERROR_MESSAGE =
+  "Ha habido un problema técnico al procesar tu solicitud. Por favor, inténtalo de nuevo en unos minutos o escríbenos a hola@herohome.es."
+
+// Confirmación tras aceptar honorarios y reservar con éxito.
+const FEE_GATE_BOOKED_MESSAGE =
+  "¡Perfecto! Tu solicitud de visita ha quedado registrada. El propietario la confirmará en breve y recibirás el aviso por WhatsApp y por email. ¡Gracias por confiar en Herohome!"
+
+// El comprador aceptó pero el hueco ya no estaba disponible (carrera).
+const FEE_GATE_SLOT_TAKEN_MESSAGE =
+  "Vaya, ese horario acaba de ocuparse. ¿Quieres que te muestre otros huecos disponibles para tu visita?"
+
+// Clasificación determinista de la respuesta del PC al gate (normalizada a
+// minúsculas + trim antes de evaluar). Sin LLM: robustez legal.
+const FEE_ACCEPT_TOKENS = new Set(["sí", "si", "acepto", "ok", "vale", "perfecto", "confirmo"])
+const FEE_ACCEPT_PHRASES = ["de acuerdo"]
+const FEE_REJECT_TOKENS = new Set(["no", "cancelar"])
+const FEE_REJECT_PHRASES = ["no acepto"]
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-hub-signature-256, content-type",
@@ -53,6 +102,40 @@ interface AnthropicResponse {
   stop_reason: string
   content: AnthropicContentBlock[]
 }
+
+// --- Tool context (compartido por executeTool y el loop) ---
+
+interface FeeGate {
+  slotId: string
+  visitorName: string
+  visitorLastName: string
+  visitorEmail: string
+  feePercent: number
+}
+
+interface ToolContext {
+  propertyId: string | null
+  waPhoneNumber: string
+  supabase: ReturnType<typeof createClient>
+  // % de comisión del comprador de la vivienda (1 = 1%). 0 = sin gate.
+  buyerFeePercent: number
+  // Cuando request_visit reúne todos los datos, en vez de reservar marca aquí el
+  // gate de honorarios; el handler lo detecta tras el loop y envía el mensaje.
+  feeGate: FeeGate | null
+}
+
+// Estado persistido en whatsapp_conversations.agent_state durante el gate.
+type AgentState = {
+  state: "awaiting_fee_consent"
+  pending_property_id: string | null
+  pending_slot_id: string
+  visitor_name: string
+  visitor_last_name: string
+  visitor_email: string
+  fee_percent: number
+  retries: number
+  gate_sent_at: string
+} | null
 
 // --- Signature verification ---
 
@@ -101,7 +184,7 @@ const TOOLS = [
   {
     name: "request_visit",
     description:
-      "Reserva una visita para la vivienda en el horario indicado (slot_id). Solo se debe llamar después de que el comprador haya facilitado su nombre completo y su email, y haya aceptado expresamente los términos y condiciones (consentimiento RGPD).",
+      "Inicia la reserva de una visita para la vivienda en el horario indicado (slot_id). Llámala cuando el comprador ya haya facilitado su nombre completo y su email, y haya aceptado los términos y condiciones (consentimiento RGPD). Al llamarla, el sistema presentará automáticamente al comprador las condiciones de honorarios (comisión del 1% al comprador) y completará la reserva SOLO si el comprador las acepta. No confirmes ni des por hecha la reserva tú mismo tras llamarla.",
     input_schema: {
       type: "object",
       properties: {
@@ -164,7 +247,7 @@ async function callInternalFunction(path: string, init: RequestInit) {
 async function executeTool(
   name: string,
   input: Record<string, unknown>,
-  context: { propertyId: string | null; waPhoneNumber: string; supabase: ReturnType<typeof createClient> }
+  context: ToolContext
 ): Promise<unknown> {
   if (name === "get_available_slots") {
     if (!context.propertyId) {
@@ -181,28 +264,67 @@ async function executeTool(
   if (name === "request_visit") {
     const { slot_id, visitor_name, visitor_last_name, visitor_email, consent_given } = input
 
-    if (consent_given === true) {
+    // Gate de honorarios (B13): NO se reserva aquí. Cuando el agente tiene los datos
+    // del comprador y el slot elegido, en vez de reservar marcamos el gate: el handler
+    // enviará el texto EXACTO de honorarios y pasará a awaiting_fee_consent. La reserva
+    // real (request-visit-slot) se hace solo si el comprador acepta (respuesta SÍ).
+    if (consent_given !== true) {
+      return {
+        error:
+          "Falta el consentimiento de términos y condiciones (RGPD). Pídeselo al comprador antes de continuar.",
+      }
+    }
+    if (
+      typeof slot_id !== "string" ||
+      typeof visitor_name !== "string" ||
+      typeof visitor_last_name !== "string" ||
+      typeof visitor_email !== "string" ||
+      !visitor_email
+    ) {
+      return {
+        error:
+          "Faltan datos para reservar (slot, nombre, apellidos o email). Reúnelos antes de continuar.",
+      }
+    }
+
+    // Vivienda con 0% de comisión: no hay nada que aceptar → reservamos directo
+    // (sin gate ni consentimiento de honorarios), como antes del gate.
+    if (context.buyerFeePercent <= 0) {
       await context.supabase.from("consents").insert({
         wa_phone_number: context.waPhoneNumber,
         type: "visit_request",
         accepted: true,
         ip_or_channel: "whatsapp",
         privacy_policy_version: "1.0",
+        property_id: context.propertyId,
+        visit_slot_id: slot_id,
       })
+      const { data, status } = await callInternalFunction("request-visit-slot", {
+        method: "POST",
+        body: JSON.stringify({
+          slot_id,
+          visitor_name,
+          visitor_last_name,
+          visitor_phone: context.waPhoneNumber,
+          visitor_email,
+          consent_given: true,
+        }),
+      })
+      return { http_status: status, ...data }
     }
 
-    const { data, status } = await callInternalFunction("request-visit-slot", {
-      method: "POST",
-      body: JSON.stringify({
-        slot_id,
-        visitor_name,
-        visitor_last_name,
-        visitor_phone: context.waPhoneNumber,
-        visitor_email: visitor_email ?? null,
-        consent_given,
-      }),
-    })
-    return { http_status: status, ...data }
+    // Vivienda con comisión > 0: en vez de reservar, abrimos el gate de honorarios.
+    context.feeGate = {
+      slotId: slot_id,
+      visitorName: visitor_name,
+      visitorLastName: visitor_last_name,
+      visitorEmail: visitor_email,
+      feePercent: context.buyerFeePercent,
+    }
+    return {
+      fee_gate: "presented",
+      note: "Se han mostrado al comprador las condiciones de honorarios. El sistema procesa su respuesta automáticamente. No confirmes ninguna reserva en este turno.",
+    }
   }
 
   if (name === "cancel_visit_by_visitor") {
@@ -222,6 +344,106 @@ async function executeTool(
   }
 
   return { error: `Unknown tool: ${name}` }
+}
+
+// --- Gate de honorarios: helpers (deterministas, sin LLM) ---
+
+// Clasifica la respuesta del PC al mensaje de honorarios. El rechazo se evalúa
+// primero para que "no acepto" gane sobre el token "acepto".
+function classifyFeeReply(text: string): "accept" | "reject" | "ambiguous" {
+  const norm = text.toLowerCase().trim()
+  const tokens = new Set(norm.split(/[^a-záéíóúñü]+/i).filter(Boolean))
+  if (FEE_REJECT_PHRASES.some((p) => norm.includes(p))) return "reject"
+  for (const t of FEE_REJECT_TOKENS) if (tokens.has(t)) return "reject"
+  if (FEE_ACCEPT_PHRASES.some((p) => norm.includes(p))) return "accept"
+  for (const t of FEE_ACCEPT_TOKENS) if (tokens.has(t)) return "accept"
+  return "ambiguous"
+}
+
+// Registra el consentimiento de honorarios en `consents` con trazabilidad
+// completa (texto exacto + wamid del mensaje del PC). Devuelve ok=false si el
+// INSERT falla: en ese caso NO se debe reservar la visita.
+async function recordFeeConsent(
+  supabase: ReturnType<typeof createClient>,
+  params: { waPhoneNumber: string; propertyId: string | null; slotId: string; waMessageId: string | null; consentText: string }
+): Promise<{ ok: boolean; error?: string }> {
+  const { error } = await supabase.from("consents").insert({
+    wa_phone_number: params.waPhoneNumber,
+    type: FEE_CONSENT_TYPE,
+    accepted: true,
+    ip_or_channel: "whatsapp",
+    privacy_policy_version: "1.0",
+    property_id: params.propertyId,
+    visit_slot_id: params.slotId,
+    consent_text: params.consentText,
+    wa_message_id: params.waMessageId,
+    // created_at: default now()
+  })
+  if (error) {
+    console.error("[whatsapp-agent] recordFeeConsent INSERT falló:", error.message)
+    return { ok: false, error: error.message }
+  }
+  return { ok: true }
+}
+
+// Escribe (o limpia con state=null) el estado del gate en la conversación.
+async function setAgentState(
+  supabase: ReturnType<typeof createClient>,
+  waPhoneNumber: string,
+  propertyId: string | null,
+  state: AgentState
+): Promise<void> {
+  let q = supabase
+    .from("whatsapp_conversations")
+    .update({ agent_state: state })
+    .eq("wa_phone_number", waPhoneNumber)
+  q = propertyId ? q.eq("property_id", propertyId) : q.is("property_id", null)
+  const { error } = await q
+  if (error) console.error("[whatsapp-agent] setAgentState falló:", error.message)
+}
+
+// Persiste el turno (mensaje del PC + respuesta de Hero) vía save-message.
+async function saveTurn(
+  waPhoneNumber: string,
+  propertyId: string | null,
+  userText: string,
+  assistantText: string
+): Promise<void> {
+  await callInternalFunction("save-message", {
+    method: "POST",
+    body: JSON.stringify({
+      wa_phone_number: waPhoneNumber,
+      property_id: propertyId,
+      messages: [
+        { role: "user", content: userText },
+        { role: "assistant", content: assistantText },
+      ],
+    }),
+  })
+}
+
+// Envía el texto EXACTO de honorarios y deja la conversación en awaiting_fee_consent.
+async function enterFeeGate(
+  supabase: ReturnType<typeof createClient>,
+  waPhoneNumber: string,
+  propertyId: string | null,
+  feeGate: FeeGate,
+  userText: string
+): Promise<void> {
+  const feeMessage = buildFeeMessage(feeGate.feePercent)
+  await sendWhatsAppText({ to: waPhoneNumber, body: feeMessage })
+  await setAgentState(supabase, waPhoneNumber, propertyId, {
+    state: "awaiting_fee_consent",
+    pending_property_id: propertyId,
+    pending_slot_id: feeGate.slotId,
+    visitor_name: feeGate.visitorName,
+    visitor_last_name: feeGate.visitorLastName,
+    visitor_email: feeGate.visitorEmail,
+    fee_percent: feeGate.feePercent,
+    retries: 0,
+    gate_sent_at: new Date().toISOString(),
+  })
+  await saveTurn(waPhoneNumber, propertyId, userText, feeMessage)
 }
 
 // --- Anthropic call ---
@@ -271,8 +493,8 @@ Reglas importantes:
   1. Reúne el nombre, los apellidos y el email del comprador, y su consentimiento explícito a los términos y condiciones. El email es OBLIGATORIO (lo necesitaremos para enviarle información, ofertas o el contrato): si no lo facilita, pídeselo y NO continúes con la reserva hasta tenerlo. Para el consentimiento pregúntale: "¿Aceptas nuestros términos y condiciones para gestionar tu visita? https://www.herohome.es/terminos-y-condiciones". Usa consent_given=true solo si responde afirmativamente.
   2. Llama a get_available_slots para obtener los slot_id ACTUALES. Los slot_id NO se conservan entre mensajes, así que debes volver a pedirlos llamando a la tool justo antes de reservar, aunque ya hubieras mostrado los horarios antes.
   3. Localiza en el resultado el slot_id que corresponde EXACTAMENTE al día y la hora que eligió el comprador.
-  4. Llama a request_visit con ese slot_id, el nombre, los apellidos y consent_given.
-  5. Confirma la reserva ÚNICAMENTE si request_visit devolvió éxito: dile que su solicitud ha quedado registrada y que el propietario la confirmará en breve, y que recibirá el aviso (por WhatsApp y por email) cuando esté confirmada. Si request_visit devolvió error (p.ej. el hueco ya no está disponible), discúlpate y ofrécele otro horario.
+  4. Llama a request_visit con ese slot_id, el nombre, los apellidos, el email y consent_given.
+  5. Al llamar a request_visit, el sistema mostrará automáticamente al comprador las condiciones de honorarios (comisión del 1% al comprador) y procesará su respuesta (SÍ/NO) por su cuenta. NO escribas tú esas condiciones, NO las parafrasees y NO digas que la visita está reservada ni registrada en ese turno: la reserva solo se completa si el comprador acepta los honorarios, y de eso se encarga el sistema. Si request_visit devuelve un error por falta de datos, reúne lo que falte y vuelve a intentarlo.
 - Para CANCELAR una visita, usa la tool cancel_visit_by_visitor:
   - Si devuelve needs_selection (varias visitas), muéstrale las opciones (campo display) y pregúntale cuál; luego vuelve a llamar con el slot_id elegido.
   - Si devuelve no_visits: SOLO dile que no consta ninguna visita activa a su nombre si lo que pedía era CANCELAR. Si está reagendando o quiere reservar un nuevo horario, NO menciones que no tiene visitas; continúa y reserva el horario elegido con el procedimiento de reserva.
@@ -290,7 +512,7 @@ Reglas importantes:
 async function runToolLoop(
   system: string,
   messages: unknown[],
-  context: { propertyId: string | null; waPhoneNumber: string; supabase: ReturnType<typeof createClient> }
+  context: ToolContext
 ): Promise<{ finalText: string; requestVisitOk: boolean }> {
   let finalText = ""
   let requestVisitOk = false
@@ -396,7 +618,7 @@ Deno.serve(async (req: Request) => {
     // Load conversation (most recent for this phone number)
     const { data: conversation } = await supabase
       .from("whatsapp_conversations")
-      .select("id, property_id, messages")
+      .select("id, property_id, messages, agent_state")
       .eq("wa_phone_number", waPhoneNumber)
       .order("last_message_at", { ascending: false })
       .limit(1)
@@ -404,15 +626,108 @@ Deno.serve(async (req: Request) => {
 
     const propertyId: string | null = conversation?.property_id ?? null
 
-    let property: { street?: string; city?: string; sales_price?: number } | null = null
+    // ---- Gate de honorarios: estado awaiting_fee_consent (determinista, sin LLM) ----
+    // Si la conversación está esperando la respuesta del PC al mensaje de honorarios,
+    // NO pasamos por el LLM: clasificamos su respuesta y resolvemos el gate.
+    const agentState = (conversation?.agent_state ?? null) as AgentState
+    if (agentState && agentState.state === "awaiting_fee_consent") {
+      const decision = classifyFeeReply(userText)
+
+      // --- ACEPTA: registrar consentimiento de honorarios y reservar ---
+      if (decision === "accept") {
+        // Reconstruimos el texto EXACTO mostrado a partir del % guardado al abrir
+        // el gate (no se recalcula desde la vivienda: garantiza que lo registrado
+        // coincide con lo que vio el comprador).
+        const consentText = buildFeeMessage(agentState.fee_percent)
+        const consentRes = await recordFeeConsent(supabase, {
+          waPhoneNumber,
+          propertyId: agentState.pending_property_id,
+          slotId: agentState.pending_slot_id,
+          waMessageId: message.id ?? null,
+          consentText,
+        })
+
+        // Si el INSERT del consentimiento falla: NO reservar. Avisar y mantener el
+        // gate abierto para que el PC pueda reintentar respondiendo de nuevo.
+        if (!consentRes.ok) {
+          await sendWhatsAppText({ to: waPhoneNumber, body: FEE_GATE_ERROR_MESSAGE })
+          await saveTurn(waPhoneNumber, propertyId, userText, FEE_GATE_ERROR_MESSAGE)
+          return new Response("OK", { status: 200, headers: corsHeaders })
+        }
+
+        // Consentimiento RGPD de la visita (se conserva el registro previo de B5).
+        await supabase.from("consents").insert({
+          wa_phone_number: waPhoneNumber,
+          type: "visit_request",
+          accepted: true,
+          ip_or_channel: "whatsapp",
+          privacy_policy_version: "1.0",
+          property_id: agentState.pending_property_id,
+          visit_slot_id: agentState.pending_slot_id,
+        })
+
+        // Reserva real (ahora sí: el slot pasa de Available → Pending to confirm).
+        const { data: bookData } = await callInternalFunction("request-visit-slot", {
+          method: "POST",
+          body: JSON.stringify({
+            slot_id: agentState.pending_slot_id,
+            visitor_name: agentState.visitor_name,
+            visitor_last_name: agentState.visitor_last_name,
+            visitor_phone: waPhoneNumber,
+            visitor_email: agentState.visitor_email,
+            consent_given: true,
+          }),
+        })
+
+        const reply =
+          (bookData as { success?: boolean })?.success === true
+            ? FEE_GATE_BOOKED_MESSAGE
+            : FEE_GATE_SLOT_TAKEN_MESSAGE
+        await sendWhatsAppText({ to: waPhoneNumber, body: reply })
+        await setAgentState(supabase, waPhoneNumber, propertyId, null)
+        await saveTurn(waPhoneNumber, propertyId, userText, reply)
+        return new Response("OK", { status: 200, headers: corsHeaders })
+      }
+
+      // --- RECHAZA: cerrar. El slot nunca se reservó, sigue Available ---
+      if (decision === "reject") {
+        await sendWhatsAppText({ to: waPhoneNumber, body: FEE_GATE_REJECTION_MESSAGE })
+        await setAgentState(supabase, waPhoneNumber, propertyId, null)
+        await saveTurn(waPhoneNumber, propertyId, userText, FEE_GATE_REJECTION_MESSAGE)
+        return new Response("OK", { status: 200, headers: corsHeaders })
+      }
+
+      // --- AMBIGUO: 1 reintento; al segundo mensaje ambiguo, tratar como rechazo ---
+      if ((agentState.retries ?? 0) < 1) {
+        const feeMessage = buildFeeMessage(agentState.fee_percent)
+        await sendWhatsAppText({ to: waPhoneNumber, body: feeMessage })
+        await setAgentState(supabase, waPhoneNumber, propertyId, {
+          ...agentState,
+          retries: (agentState.retries ?? 0) + 1,
+        })
+        await saveTurn(waPhoneNumber, propertyId, userText, feeMessage)
+        return new Response("OK", { status: 200, headers: corsHeaders })
+      }
+
+      await sendWhatsAppText({ to: waPhoneNumber, body: FEE_GATE_REJECTION_MESSAGE })
+      await setAgentState(supabase, waPhoneNumber, propertyId, null)
+      await saveTurn(waPhoneNumber, propertyId, userText, FEE_GATE_REJECTION_MESSAGE)
+      return new Response("OK", { status: 200, headers: corsHeaders })
+    }
+
+    let property: { street?: string; city?: string; sales_price?: number; buyer_fee_percent?: number | string | null } | null = null
     if (propertyId) {
       const { data } = await supabase
         .from("properties")
-        .select("street, city, sales_price")
+        .select("street, city, sales_price, buyer_fee_percent")
         .eq("id", propertyId)
         .maybeSingle()
       property = data
     }
+
+    // numeric de Postgres puede llegar como string vía supabase-js → coercionar.
+    const buyerFeePercent =
+      property?.buyer_fee_percent != null ? Number(property.buyer_fee_percent) : DEFAULT_BUYER_FEE_PERCENT
 
     const history: { role: string; content: string }[] = Array.isArray(conversation?.messages)
       ? (conversation!.messages as { role: string; content: string }[])
@@ -432,9 +747,18 @@ Deno.serve(async (req: Request) => {
     ]
 
     const system = buildSystemPrompt(property)
-    const toolContext = { propertyId, waPhoneNumber, supabase }
+    const toolContext: ToolContext = { propertyId, waPhoneNumber, supabase, feeGate: null, buyerFeePercent }
 
     let { finalText, requestVisitOk } = await runToolLoop(system, anthropicMessages, toolContext)
+
+    // ---- Entrada al gate de honorarios ----
+    // request_visit reunió los datos y pidió reservar. En vez de reservar, enviamos
+    // el texto EXACTO de honorarios y pasamos a awaiting_fee_consent. La reserva se
+    // completará en el siguiente turno solo si el comprador acepta (rama de arriba).
+    if (toolContext.feeGate) {
+      await enterFeeGate(supabase, waPhoneNumber, propertyId, toolContext.feeGate, userText)
+      return new Response("OK", { status: 200, headers: corsHeaders })
+    }
 
     // Guardarraíl anti-alucinación: si el modelo afirma una reserva sin que
     // request_visit haya tenido éxito en este turno, lo corregimos para no
@@ -454,6 +778,13 @@ Deno.serve(async (req: Request) => {
         finalText =
           "Perdona, no he podido completar la reserva ahora mismo. ¿Me confirmas de nuevo el día y la hora que prefieres y lo intento otra vez?"
       }
+    }
+
+    // Si el reintento del guardarraíl fue el que disparó request_visit, entramos al
+    // gate aquí (mismo helper, texto verbatim) en vez de enviar el finalText.
+    if (toolContext.feeGate) {
+      await enterFeeGate(supabase, waPhoneNumber, propertyId, toolContext.feeGate, userText)
+      return new Response("OK", { status: 200, headers: corsHeaders })
     }
 
     if (!finalText) {

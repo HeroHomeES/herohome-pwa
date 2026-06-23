@@ -201,6 +201,7 @@ src/
 
 **B13 — Negocio y Legal: 🔄 EN CURSO (paralelo, no técnico)**
 - Revisión pricing "primera venta gratis" · contrato reconocimiento honorarios comprador (abogado) · momento de firma · plan de captación.
+- ✅ (técnico, 23 junio) Gate de reconocimiento de honorarios del comprador **antes de confirmar visita** implementado en `whatsapp-agent` (estado `awaiting_fee_consent` + `recordFeeConsent`, opción determinista). Pendiente: aplicar migración + deploy + e2e. Ver Registro de sesiones.
 
 **B14 — Infraestructura de desarrollo: ✅ COMPLETADO (12 junio 2026)**
 - ✅ Supabase MCP conectado en Claude Code (read-only, scoped al proyecto).
@@ -213,6 +214,25 @@ src/
 ---
 
 ## Registro de sesiones
+
+### 23 junio 2026 — Gate de honorarios del comprador (B13 → integrado en B5)
+
+Antes de confirmar una visita, el PC debe **aceptar explícitamente la comisión del 1% del comprador**. Consentimiento capturado dentro del flujo de WhatsApp (sin canal externo), con trazabilidad para una reclamación judicial. Implementado como **gate determinista fuera del LLM** (interceptor antes del loop de tool-calling), no como tool del LLM, por robustez legal.
+
+- **Diseño elegido (opción A, deliberado):** máquina de estados determinista frente a alternativas más simples (pedir la comisión por adelantado antes de los slots, o un flag en `request_visit`). Motivo: el texto debe enviarse **verbatim** (no generado por el LLM) y la aceptación debe ser **inequívoca y aislada** (matching por palabra, no interpretación del LLM). Trade-off asumido: más código + 1 columna nueva + cambio de cron.
+- **Nuevo estado `awaiting_fee_consent`** persistido en `whatsapp_conversations.agent_state` (columna `jsonb` NUEVA; el historial es solo texto y los `slot_id` no sobreviven entre turnos). Guarda `pending_property_id`, `pending_slot_id`, datos del visitante, `fee_percent`, `retries` y `gate_sent_at`.
+- **Comisión configurable por vivienda** (`properties.buyer_fee_percent`, `1` = 1%, por defecto 1, **invariable** por vivienda, editable a mano antes de comercializar): el mensaje se construye en código con ese % (sigue sin generarlo el LLM); **0% se salta el gate** y reserva directo. Formato español ("0,5%", sin ceros sobrantes). El % mostrado se guarda en `agent_state.fee_percent` para que `consent_text` coincida exactamente con lo que vio el comprador.
+- **El slot NO se reserva durante el gate** (sigue `Available`). Solo tras aceptar se llama a `request-visit-slot` → `Pending to confirm` → se avisa al CV. Timing correcto: el propietario no ve la solicitud antes de que el comprador acepte la comisión (respeta el Punto 7).
+- **`request_visit` ya no reserva:** reúne datos (nombre, apellidos, email, consentimiento RGPD) y **dispara el gate**; el handler envía `FEE_MESSAGE` verbatim y pasa a `awaiting_fee_consent`. La reserva real ocurre en el turno siguiente solo si el PC acepta.
+- **`recordFeeConsent` (función interna):** INSERT en `consents` (`type='buyer_fee_acknowledgement'`, `accepted=true`, `consent_text`=texto exacto, `wa_message_id`=wamid del "SÍ" del PC, `property_id`, `visit_slot_id`) **ANTES** de `request-visit-slot`. Si el INSERT falla → NO se reserva y se avisa al PC (mensaje genérico de reintento); el gate sigue abierto.
+- **Clasificación determinista** (minúsculas+trim, palabra completa, rechazo gana sobre aceptación): acepta `sí/si/acepto/de acuerdo/ok/vale/perfecto/confirmo`; rechaza `no/no acepto/cancelar`; ambiguo → repregunta con el mismo mensaje (máx 1 reintento; 2º ambiguo = rechazo).
+- **Mensaje de honorarios = texto libre** dentro de la ventana de 24h (el PC acaba de escribir): **no requiere plantilla Meta nueva**. Se guarda verbatim en `consents.consent_text`.
+- **Cron `cleanup-old-slots` (02:00) — Operación 3 NUEVA:** resetea conversaciones colgadas en `awaiting_fee_consent` >24h (silencioso, sin aviso al PC; el slot nunca se movió de `Available`). Revisado antes de duplicar: la Op 2 existente expira `Pending to confirm` por `end_time` → `Not available` (semántica distinta). **No** se añadió la regla genérica `Pending to confirm + updated_at>24h → Available` (con este diseño el gate nunca deja un slot pendiente; cambiaría el comportamiento de confirmación del CV).
+- **Timeout al PC NO implementado** (decisión: cron silencioso). El texto de timeout queda aparcado por si se quiere la variante Edge Function (`expire-fee-gates`) + plantilla Meta `gate_timeout`.
+- **No tocado** (Punto 7): Salesforce, `offers`/`create_offer` (el DNI sigue pidiéndose ahí, B9), ni las Edge Functions de soporte (a `request-visit-slot` solo se la consume).
+- **Migración requerida** (aplicar manual — MCP read-only): `supabase/sql/2026-06-23-fee-gate.sql` (consents 4 cols + `agent_state` + índice parcial + `properties.buyer_fee_percent`). Cron: re-ejecutar el bloque `cleanup-old-slots` de `supabase/sql/setup-crons.sql`.
+- **Cambios:** `whatsapp-agent/index.ts` (constantes verbatim, máquina de estados, helpers `classifyFeeReply`/`recordFeeConsent`/`setAgentState`/`enterFeeGate`/`saveTurn`, `request_visit` reconvertido en disparador del gate), `supabase/sql/2026-06-23-fee-gate.sql` (nuevo), `supabase/sql/setup-crons.sql` (Op 3).
+- **Estado:** código commiteado. **Pendiente:** (1) aplicar migración + cron en el SQL Editor; (2) deploy del agente (push a `main`) **DESPUÉS** de la migración — el agente hace `select(... agent_state)`, desplegar antes degradaría la carga de contexto (blast radius limitado: Meta en modo Dev); (3) validación e2e por WhatsApp.
 
 ### 23 junio 2026 — B7 COMPLETO: recordatorios de visita + crons arreglados
 

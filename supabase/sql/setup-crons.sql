@@ -55,6 +55,10 @@ SELECT cron.schedule(
 -- Operación 1: Borra slots pasados que nadie reservó (Available)
 -- Operación 2: Marca como 'Not available' las solicitudes de visita
 --              no confirmadas cuyo horario ya expiró (Pending to confirm)
+-- Operación 3: Gate de honorarios (B13) — resetea conversaciones colgadas
+--              en awaiting_fee_consent >24h (el PC no respondió al gate).
+--              El slot nunca se reservó (sigue Available): solo se limpia
+--              el estado de la conversación. Cron silencioso (sin aviso al PC).
 -- ================================================================
 
 -- NOTA sobre status: la tabla usa Title Case, no snake_case.
@@ -83,6 +87,15 @@ SELECT cron.schedule(
            updated_at = now()
     WHERE  end_time < now()
       AND  status   = 'Pending to confirm';
+
+    -- 3. Gate de honorarios (B13): resetear gates colgados >24h.
+    --    El PC no respondió al mensaje de honorarios. El slot NUNCA se reservó
+    --    (sigue 'Available'), así que aquí solo limpiamos el estado de la
+    --    conversación. Sin aviso al PC (decisión: cron silencioso).
+    UPDATE whatsapp_conversations
+    SET    agent_state = NULL
+    WHERE  agent_state->>'state' = 'awaiting_fee_consent'
+      AND  (agent_state->>'gate_sent_at')::timestamptz < now() - interval '24 hours';
 
   END;
   $body$
