@@ -82,7 +82,7 @@ Herohome es la primera agencia inmobiliaria 100% digital de España. Propietario
 
 - **PWA:** push a GitHub → Vercel redespliega automáticamente.
 - **Edge Functions:** push a `main` con cambios en `supabase/functions/**` → GitHub Action (`.github/workflows/deploy.yml`) ejecuta `supabase functions deploy`. Secrets del repo: `SUPABASE_ACCESS_TOKEN`, `SUPABASE_PROJECT_ID`.
-- **Pendiente técnico:** revisar `config.toml` de las funciones que se invocan con `x-api-key` para fijar `verify_jwt = false` (que el deploy automático no reactive la verificación JWT).
+- **`config.toml`** presente en `supabase/config.toml`: fija `verify_jwt = false` para `whatsapp-agent`, `process-idealista-lead`, `visit-reminders` y `generate-slots`.
 - **Deploy manual (fallback):** `supabase functions deploy <nombre-función>`
 
 ---
@@ -150,7 +150,8 @@ src/
 - `WHATSAPP_VERIFY_TOKEN` — NUEVO (verificación GET del webhook de Meta, string propio)
 - `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID` — envío Cloud API
 - `WHATSAPP_WELCOME_TEMPLATE_NAME` — NUEVO (plantilla de bienvenida aprobada en Meta; por defecto `bienvenida_pc`)
-- ~~`MAKE_WEBHOOK_NOTIFY_VISIT`~~ — ELIMINAR al reescribir notify-visit
+- ~~`MAKE_WEBHOOK_NOTIFY_VISIT`~~ — ELIMINAR (notify-visit v3.1 ya no lo usa)
+- ~~`OPENAI_API_KEY`~~ — ELIMINAR (nunca usado en v3.1)
 
 ---
 
@@ -159,24 +160,23 @@ src/
 | # | Escenario | Estado |
 |---|-----------|--------|
 | 1 | Formulario web → Lead en Salesforce | ✅ Activo |
-| 2 | Gmail Watch (Idealista) → HTTP a process-idealista-lead (2 módulos) | 🔄 Reconfigurar (B5) |
-| 3-6 | Notificaciones vía Gmail | ❌ ELIMINADOS en v3.1 (Esc. 3 activo: desactivar al desplegar notify-visit v3.1) |
+| 2 | Gmail Watch (Idealista) → HTTP a process-idealista-lead (2 módulos) | ✅ Configurado (B5) — pendiente: prueba con primer email real de Idealista |
+| 3-6 | Notificaciones vía Gmail | ❌ ELIMINADOS en v3.1 — desactivar Esc. 3 si aún está activo |
 | — | Webhook WhatsApp entrante en Make | ❌ ELIMINADO: el webhook de Meta apunta a whatsapp-agent |
 
 ---
 
-## Estado del proyecto (actualizado 12 junio 2026 — plan v3.1)
+## Estado del proyecto (actualizado 23 junio 2026 — plan v3.1)
 
 **B0-B4 — Fundamentos, Activación CV, PWA, Edición, Slots: ✅ COMPLETADOS**
 - ✅ Bug del Magic Link (route guard + Service Worker stale) resuelto 14 junio 2026 — ver Registro de sesiones.
 
-**B5 — Agente WhatsApp + Visitas: 🔄 EN CURSO** ← **CAMINO CRÍTICO**
-- ✅ Edge Functions de soporte (slots, historial, mensajes). PWA: visitas pendientes + próximas + reagendar.
-- ✅ Código de `whatsapp-agent` (webhook Meta + HMAC + loop Claude Haiku 4.5 + tools get_available_slots/request_visit) — pendiente desplegar y configurar secrets/webhook.
-- ✅ Código de `process-idealista-lead` (extracción con Claude Haiku 4.5 + lookup Supabase + WhatsApp bienvenida + alerta Resend) — pendiente desplegar y reconfigurar Make Esc. 2.
-- ⬜ Reescribir `notify-visit` (Resend + WhatsApp directo).
-- 🔄 Plantillas WhatsApp en Meta (en curso por el usuario) + plantillas email en código.
-- ⬜ Reapuntar webhook de Meta a la Edge Function. Reconfigurar Make Esc. 2. Validación end-to-end.
+**B5 — Agente WhatsApp + Visitas: ✅ COMPLETADO y validado e2e (22 junio)**
+- ✅ `whatsapp-agent` en vivo (webhook Meta + HMAC + loop Claude Sonnet 4.6 + tools `get_available_slots`/`request_visit` + guardarraíl anti-alucinación).
+- ✅ `process-idealista-lead` desplegada (extracción Claude Haiku 4.5 + lookup + `bienvenida_pc` + alerta Resend). Make Esc. 2 configurado.
+- ✅ `notify-visit` reescrita v3.1: Resend + WhatsApp directo (sin Make). Templates `visita_confirmada`/`visita_cancelada` aprobadas en es_ES.
+- ✅ Email obligatorio en reserva. URL RGPD actualizada. Flujo Idealista→chat→reserva→confirmación→WhatsApp+email validado.
+- Único pendiente: **primer email real de Idealista** (prueba Make Esc. 2 con email real, no simulado).
 
 **B6 — Reagendado PC: ✅ COMPLETADO y validado e2e (23 junio)**
 - ✅ Tool `cancel_visit_by_visitor` + Edge Function `cancel-visit-by-visitor` (cancela solo visitas propias por teléfono, status → `Canceled by visitor`).
@@ -188,7 +188,15 @@ src/
 - ✅ Cancelación por propietario + aviso al PC (vía `notify-visit`): hecho y validado en B5.
 - ✅ Edge Function `visit-reminders` (verify_jwt=false, x-api-key): cron `0 7 * * *` → recordatorio el día antes de visitas `Confirmed` (PC: plantilla `recordatorio_visita` WhatsApp + email; CV: email). Plantilla aprobada (es_ES), cron activo. **Validado e2e**: visita sembrada para mañana → llegaron WhatsApp + email al PC y email al CV.
 - ✅ De paso, arreglado el cron `generate-daily-slots` (pasó a x-api-key; antes daba 401 con Bearer service_role).
-**B9 — Gestión de Ofertas: ⬜ PENDIENTE** (manage-offer + tool create_offer con gate de honorarios; bloqueado parcialmente por decisión legal B13)
+**⬛ PRÓXIMO BLOQUE: B9 — Gestión de Ofertas**
+- `manage-offer` (Edge Function, POST desde PWA) + tool `create_offer` en whatsapp-agent (gate de honorarios).
+- Bloqueado parcialmente por decisión legal de B13 (momento de firma del contrato de honorarios del comprador).
+
+**Pendiente operacional antes del lanzamiento (no código):**
+- ⚠️ **Meta → modo Live** (CRÍTICO): la app de Meta está en modo Desarrollo. Solo números de prueba autorizados reciben WhatsApp. Hasta activar "Live mode" (verificación de empresa), compradores reales no recibirán nada. Requiere: completar Business Verification en Meta + solicitar Live mode.
+- 🔄 **Make Esc. 2**: probar con el primer email real de Idealista (función validada vía curl; el trigger Gmail no se ha probado con email real).
+- 🧹 **Limpieza opcional** (no bloqueante): (a) borrar datos de prueba (visitas/conversaciones de Roberto y Carlos en vivienda Santander + slot "mañana" del test de B7); (b) eliminar secret `MAKE_WEBHOOK_NOTIFY_VISIT` (obsoleto en v3.1); (c) desactivar/eliminar escenario Make `whatsapp-herohome-inbound` (obsoleto v3.0); (d) eliminar secret `OPENAI_API_KEY` (nunca se usó en v3.1).
+
 **B12 — QA y Lanzamiento: ⬜ PENDIENTE** (RLS, rotación de secrets, pen test incl. HMAC, monitoring)
 
 **B13 — Negocio y Legal: 🔄 EN CURSO (paralelo, no técnico)**
@@ -206,15 +214,14 @@ src/
 
 ## Registro de sesiones
 
-### 23 junio 2026 — B7: recordatorios de visita (`visit-reminders`)
+### 23 junio 2026 — B7 COMPLETO: recordatorios de visita + crons arreglados
 
-- **Tarea "cancelación por propietario + aviso al PC" ya estaba hecha** en B5 (notify-visit v3.1 → el PC recibe `visita_cancelada` WhatsApp + email cuando el CV cancela). Solo se marca.
-- **Nueva Edge Function `visit-reminders`** (verify_jwt=false, x-api-key): cron diario 07:00 UTC (~09:00 Madrid) → busca visitas `Confirmed` cuya fecha local Madrid es la de MAÑANA y envía recordatorio: al PC plantilla WhatsApp `recordatorio_visita` + email (`visitReminderPcHtml`); al CV email (`visitReminderCvHtml`). Dedup natural por la ventana "mañana" (cada visita se recuerda una vez, sin columna extra). Validado por curl (visits_found=0 hoy, auth x-api-key OK).
-- **Cron `visit-reminders`** añadido a `setup-crons.sql` (CRON 4, `0 7 * * *`, con x-api-key) — pendiente aplicar a mano.
-- **Plantilla Meta `recordatorio_visita`** (es_ES, 3 vars: nombre/dirección/fecha-hora) — pendiente crear/aprobar.
-- Decisión de auth del cron: **x-api-key** (no Bearer service_role), más robusto.
-- **Arreglado el fallo del cron de slots (401):** `generate-slots` ahora acepta **`x-api-key` en modo cron** (verify_jwt=false; el modo single-property de la PWA sigue con JWT + ownership, ahora exigiendo userId válido). Validado por curl (`properties_processed: 1`; sin key → 401). El cron `generate-daily-slots` se cambia a x-api-key en `setup-crons.sql` → **pendiente re-ejecutar ese SQL**. Nota: bajar verify_jwt en generate-slots deja el ownership del modo PWA sobre un JWT no verificado por el gateway (riesgo bajo: solo permitiría regenerar slots de otra vivienda; sin fuga de datos) — endurecer a futuro si se quiere.
-- **Corregido el orden de variables** del WhatsApp de recordatorio: la plantilla del usuario es `{{1}}`=nombre, `{{2}}`=fecha, `{{3}}`=dirección → `visit-reminders` envía `bodyParams` en ese orden.
+- **Nueva Edge Function `visit-reminders`** (verify_jwt=false, x-api-key, cron `0 7 * * *` ~09:00 Madrid): busca visitas `Confirmed` cuya fecha local (Madrid) es MAÑANA → PC: plantilla WhatsApp `recordatorio_visita` ({{1}}=nombre, {{2}}=fecha, {{3}}=dirección) + email (`visitReminderPcHtml`); CV: email (`visitReminderCvHtml`). Sin columna extra — dedup natural por ventana "mañana". Plantilla `recordatorio_visita` aprobada en Meta (es_ES). Cron activo (jobid=13).
+- **Validado e2e**: visita sembrada para mañana → `{visits_found:1, reminders_pc:1, reminders_cv:1}` → usuario confirmó "llega todo perfecto" (WhatsApp + ambos emails recibidos).
+- **Fix cron `generate-daily-slots` (401):** `generate-slots` pasó a x-api-key en modo cron (verify_jwt=false). Antes fallaba con `Bearer service_role` → 401. Fix: cron usa x-api-key; modo PWA sigue con JWT + ownership check interno. Cron re-ejecutado (setup-crons.sql) y validado.
+- **Cancelación por propietario + aviso al PC**: ya estaba hecho en B5 (`notify-visit` v3.1 envía `visita_cancelada` WhatsApp + email al PC). Solo se marca como completado en B7.
+- Templates de email B7 en `_shared/email-templates/visit-status.ts`: `visitReminderPcHtml`, `visitReminderCvHtml`.
+- Todos los crons activos y sin placeholders: `generate-daily-slots` (03:00), `cleanup-old-slots` (02:00), `complete-visits` (23:00), `visit-reminders` (07:00).
 
 ### 23 junio 2026 — B6 COMPLETO (resumen consolidado): cancelación por el PC + reagendado
 
