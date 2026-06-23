@@ -9,3 +9,7 @@ verify_jwt = false
 # JWT de Supabase → verify_jwt debe estar en false.
 [functions.process-idealista-lead]
 verify_jwt = false
+
+# visit-reminders lo invoca el cron (pg_cron) con x-api-key, sin JWT de Supabase.
+[functions.visit-reminders]
+verify_jwt = false

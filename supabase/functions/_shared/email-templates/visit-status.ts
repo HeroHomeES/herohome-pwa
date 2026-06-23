@@ -57,6 +57,45 @@ export function ownerVisitCanceledByVisitorHtml(params: {
   })
 }
 
+// Recordatorio (el día antes) — dirigido al COMPRADOR (PC).
+export function visitReminderPcHtml(params: {
+  visitorName: string
+  propertyAddress: string
+  dateTime: string
+}): string {
+  return emailShell({
+    accentColor: "#5B5CFF",
+    heading: "Recordatorio de tu visita 📅",
+    intro: `Hola ${params.visitorName}, te recordamos que mañana tienes una visita:`,
+    detailRows: [
+      { label: "Vivienda", value: params.propertyAddress },
+      { label: "Fecha y hora", value: params.dateTime },
+    ],
+    closing: "¡Te esperamos! Si necesitas cambiarla o cancelarla, respóndenos por WhatsApp.",
+  })
+}
+
+// Recordatorio (el día antes) — dirigido al PROPIETARIO (CV).
+export function visitReminderCvHtml(params: {
+  ownerName?: string
+  visitorName: string
+  propertyAddress: string
+  dateTime: string
+}): string {
+  const saludo = params.ownerName ? `Hola ${params.ownerName}, ` : "Hola, "
+  return emailShell({
+    accentColor: "#5B5CFF",
+    heading: "Recordatorio: visita mañana en tu vivienda 📅",
+    intro: `${saludo}te recordamos que mañana tienes una visita programada en tu vivienda:`,
+    detailRows: [
+      { label: "Vivienda", value: params.propertyAddress },
+      { label: "Fecha y hora", value: params.dateTime },
+      { label: "Visitante", value: params.visitorName || "—" },
+    ],
+    closing: "Puedes ver el detalle en tu panel de Herohome.",
+  })
+}
+
 function emailShell(opts: {
   accentColor: string
   heading: string

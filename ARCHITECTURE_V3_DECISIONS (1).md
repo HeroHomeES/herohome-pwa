@@ -122,7 +122,7 @@ El flujo RGPD del agente de WhatsApp pide consentimiento de privacidad al inicio
 | `whatsapp-agent` | **Webhook de Meta (GET verificación + POST mensajes)** | ✅ Desplegada (B5, verify_jwt=false) — pendiente conectar webhook en Meta |
 | `process-idealista-lead` | HTTP POST desde Make Esc. 2 | ✅ Desplegada (B5, verify_jwt=false) — pendiente reconfigurar Make Escenario 2 |
 | `cancel-visit-by-visitor` | Tool del agente | ✅ Completada (B6): cancela + notifica al CV (Realtime) |
-| `visit-reminders` | Cron diario 09:00 | ⬜ Pendiente (B7) — envía con Resend directo |
+| `visit-reminders` | Cron diario 07:00 UTC (x-api-key, verify_jwt=false) | ✅ Completada (B7): recordatorio el día antes — WhatsApp `recordatorio_visita` + email al PC, email al CV |
 | `manage-offer` | HTTP POST desde PWA | ⬜ Pendiente (B9) — envía con Resend directo |
 | `create-offer` | Tool del agente | ⬜ Pendiente (B9) — con gate de honorarios |
 | `complete-visits` | Cron diario 23:00 | ⬜ Aplazado (B11) — verificar si el cron ya existe antes de crear |

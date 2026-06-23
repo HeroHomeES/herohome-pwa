@@ -136,7 +136,7 @@ src/
 | `whatsapp-agent` | Webhook de Meta (GET + POST con HMAC) | ✅ EN VIVO (B5, verify_jwt=false) — webhook conectado y chat entrante probado |
 | `process-idealista-lead` | HTTP POST desde Make Esc. 2 | ✅ Desplegada (B5, verify_jwt=false) — pendiente reconfigurar Make Esc. 2 |
 | `cancel-visit-by-visitor` | Tool de whatsapp-agent | ✅ Completada (B6): cancela (status → Canceled by visitor) + notifica al CV |
-| `visit-reminders` | Cron diario 09:00 | ⬜ Pendiente (B7) |
+| `visit-reminders` | Cron diario 07:00 UTC (x-api-key) | ✅ B7: recordatorio el día antes (WhatsApp+email PC, email CV) |
 | `manage-offer` | HTTP POST desde PWA | ⬜ Pendiente (B9) |
 | `create-offer` | Tool de whatsapp-agent (gate de honorarios) | ⬜ Pendiente (B9) |
 | `complete-visits` | Cron diario 23:00 | ⬜ Aplazado (B11) — verificar si el cron ya existe |
@@ -183,7 +183,11 @@ src/
 - ✅ Aviso al CV: notificación in-app `visit_canceled` (PWA por Realtime) **+ email al propietario** (Resend) cuando la visita cancelada estaba en `Confirmed`.
 - ✅ Lógica del agente: tras cancelar ofrece reagendar (reutiliza `get_available_slots`); reagendar = cancelar 1 vez + reservar (sin re-cancelar).
 - ✅ Validado e2e por WhatsApp: reservar → confirmar → cancelar por PC → reagendar → confirmar, con notificaciones y emails. Requirió agente en **Sonnet 4.6** + guardarraíl anti-alucinación + reset de historial contaminado.
-**B7 — Reagendado CV + Recordatorios: ⬜ PENDIENTE** (visit-reminders con Resend directo)
+**B7 — Reagendado CV + Recordatorios: 🔄 EN CURSO**
+- ✅ Próximas visitas + validación 24h en PWA: hecho en B5.
+- ✅ Cancelación por propietario + aviso al PC (vía `notify-visit`): hecho y validado en B5 (notify-visit v3.1 → `visita_cancelada` WhatsApp + email al PC al cancelar el CV).
+- ✅ Edge Function `visit-reminders` (verify_jwt=false, x-api-key): cron 07:00 UTC → recordatorio el día antes de visitas `Confirmed` (PC: plantilla WhatsApp `recordatorio_visita` + email; CV: email). Desplegada y validado que arranca.
+- 🔄 Pendiente: aprobar plantilla Meta `recordatorio_visita` (es_ES), activar el cron (SQL en `setup-crons.sql`), y prueba e2e del recordatorio real.
 **B9 — Gestión de Ofertas: ⬜ PENDIENTE** (manage-offer + tool create_offer con gate de honorarios; bloqueado parcialmente por decisión legal B13)
 **B12 — QA y Lanzamiento: ⬜ PENDIENTE** (RLS, rotación de secrets, pen test incl. HMAC, monitoring)
 
@@ -201,6 +205,14 @@ src/
 ---
 
 ## Registro de sesiones
+
+### 23 junio 2026 — B7: recordatorios de visita (`visit-reminders`)
+
+- **Tarea "cancelación por propietario + aviso al PC" ya estaba hecha** en B5 (notify-visit v3.1 → el PC recibe `visita_cancelada` WhatsApp + email cuando el CV cancela). Solo se marca.
+- **Nueva Edge Function `visit-reminders`** (verify_jwt=false, x-api-key): cron diario 07:00 UTC (~09:00 Madrid) → busca visitas `Confirmed` cuya fecha local Madrid es la de MAÑANA y envía recordatorio: al PC plantilla WhatsApp `recordatorio_visita` + email (`visitReminderPcHtml`); al CV email (`visitReminderCvHtml`). Dedup natural por la ventana "mañana" (cada visita se recuerda una vez, sin columna extra). Validado por curl (visits_found=0 hoy, auth x-api-key OK).
+- **Cron `visit-reminders`** añadido a `setup-crons.sql` (CRON 4, `0 7 * * *`, con x-api-key) — pendiente aplicar a mano.
+- **Plantilla Meta `recordatorio_visita`** (es_ES, 3 vars: nombre/dirección/fecha-hora) — pendiente crear/aprobar.
+- Decisión de auth del cron: **x-api-key** (no Bearer service_role), más robusto. ⚠️ Visto un **401 de `generate-slots`** en los logs → el cron `generate-daily-slots` (Bearer service_role) podría estar fallando la auth; pendiente de revisar (haría que la generación nocturna de slots no se ejecute, aunque la on-save sí funciona).
 
 ### 23 junio 2026 — B6 COMPLETO (resumen consolidado): cancelación por el PC + reagendado
 

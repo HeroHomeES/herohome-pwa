@@ -115,6 +115,35 @@ SELECT cron.schedule(
 
 
 -- ================================================================
+-- CRON 4 — visit-reminders
+-- Diario a las 07:00 UTC (~09:00 Europe/Madrid; varía 1h con el horario de verano)
+-- Llama a la Edge Function visit-reminders (con x-api-key) → recordatorio
+-- "el día antes" de las visitas Confirmed: WhatsApp (plantilla) + email al PC,
+-- y email al CV (propietario).
+-- ANTES DE EJECUTAR: sustituye TU_HEROHOME_API_KEY_AQUI por el valor de HEROHOME_API_KEY.
+-- ================================================================
+
+SELECT cron.unschedule(jobid)
+FROM cron.job
+WHERE jobname = 'visit-reminders';
+
+SELECT cron.schedule(
+  'visit-reminders',
+  '0 7 * * *',                        -- diario a las 07:00 UTC (~09:00 Madrid)
+  $$
+  SELECT net.http_post(
+    url     := 'https://zqkvcphtqmibttgnivku.supabase.co/functions/v1/visit-reminders',
+    headers := jsonb_build_object(
+      'Content-Type', 'application/json',
+      'x-api-key',    'TU_HEROHOME_API_KEY_AQUI'
+    ),
+    body    := '{}'::jsonb
+  );
+  $$
+);
+
+
+-- ================================================================
 -- VERIFICACIÓN — ejecuta esto al final para confirmar el registro
 -- ================================================================
 SELECT
@@ -127,6 +156,7 @@ FROM cron.job
 WHERE jobname IN (
   'generate-daily-slots',
   'cleanup-old-slots',
-  'complete-visits'
+  'complete-visits',
+  'visit-reminders'
 )
 ORDER BY jobname;
