@@ -183,11 +183,11 @@ src/
 - ✅ Aviso al CV: notificación in-app `visit_canceled` (PWA por Realtime) **+ email al propietario** (Resend) cuando la visita cancelada estaba en `Confirmed`.
 - ✅ Lógica del agente: tras cancelar ofrece reagendar (reutiliza `get_available_slots`); reagendar = cancelar 1 vez + reservar (sin re-cancelar).
 - ✅ Validado e2e por WhatsApp: reservar → confirmar → cancelar por PC → reagendar → confirmar, con notificaciones y emails. Requirió agente en **Sonnet 4.6** + guardarraíl anti-alucinación + reset de historial contaminado.
-**B7 — Reagendado CV + Recordatorios: 🔄 EN CURSO**
+**B7 — Reagendado CV + Recordatorios: ✅ COMPLETADO y validado e2e (23 junio)**
 - ✅ Próximas visitas + validación 24h en PWA: hecho en B5.
-- ✅ Cancelación por propietario + aviso al PC (vía `notify-visit`): hecho y validado en B5 (notify-visit v3.1 → `visita_cancelada` WhatsApp + email al PC al cancelar el CV).
-- ✅ Edge Function `visit-reminders` (verify_jwt=false, x-api-key): cron 07:00 UTC → recordatorio el día antes de visitas `Confirmed` (PC: plantilla WhatsApp `recordatorio_visita` + email; CV: email). Desplegada y validado que arranca.
-- 🔄 Pendiente: aprobar plantilla Meta `recordatorio_visita` (es_ES), activar el cron (SQL en `setup-crons.sql`), y prueba e2e del recordatorio real.
+- ✅ Cancelación por propietario + aviso al PC (vía `notify-visit`): hecho y validado en B5.
+- ✅ Edge Function `visit-reminders` (verify_jwt=false, x-api-key): cron `0 7 * * *` → recordatorio el día antes de visitas `Confirmed` (PC: plantilla `recordatorio_visita` WhatsApp + email; CV: email). Plantilla aprobada (es_ES), cron activo. **Validado e2e**: visita sembrada para mañana → llegaron WhatsApp + email al PC y email al CV.
+- ✅ De paso, arreglado el cron `generate-daily-slots` (pasó a x-api-key; antes daba 401 con Bearer service_role).
 **B9 — Gestión de Ofertas: ⬜ PENDIENTE** (manage-offer + tool create_offer con gate de honorarios; bloqueado parcialmente por decisión legal B13)
 **B12 — QA y Lanzamiento: ⬜ PENDIENTE** (RLS, rotación de secrets, pen test incl. HMAC, monitoring)
 
