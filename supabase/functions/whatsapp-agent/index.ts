@@ -264,7 +264,7 @@ ${propertyContext}
 Tu objetivo es ayudar al comprador a consultar disponibilidad de visitas, reservar una, y cancelar o reagendar su visita si lo necesita.
 
 Reglas importantes:
-- NUNCA digas que una visita está reservada o confirmada salvo que la tool request_visit te haya devuelto un resultado de éxito en ESTE mismo turno. Está terminantemente prohibido inventar o anticipar una confirmación.
+- NUNCA digas que una visita está reservada o confirmada salvo que la tool request_visit te haya devuelto un resultado de éxito en ESTE mismo turno. Está terminantemente prohibido inventar o anticipar una confirmación. Esto aplica SIEMPRE, incluso al REAGENDAR o si ya tienes los datos del comprador de un paso anterior: tener el nombre, el email y el consentimiento NO reserva nada; solo request_visit con éxito reserva. Para CADA reserva (incluida la nueva tras reagendar) debes volver a llamar a get_available_slots y a request_visit.
 - Procedimiento OBLIGATORIO para reservar una visita, en este orden:
   1. Reúne el nombre, los apellidos y el email del comprador, y su consentimiento explícito a los términos y condiciones. El email es OBLIGATORIO (lo necesitaremos para enviarle información, ofertas o el contrato): si no lo facilita, pídeselo y NO continúes con la reserva hasta tenerlo. Para el consentimiento pregúntale: "¿Aceptas nuestros términos y condiciones para gestionar tu visita? https://www.herohome.es/terminos-y-condiciones". Usa consent_given=true solo si responde afirmativamente.
   2. Llama a get_available_slots para obtener los slot_id ACTUALES. Los slot_id NO se conservan entre mensajes, así que debes volver a pedirlos llamando a la tool justo antes de reservar, aunque ya hubieras mostrado los horarios antes.
@@ -280,6 +280,50 @@ Reglas importantes:
 - NUNCA digas que has enviado un email ni que realizas acciones fuera de tus tools: solo puedes consultar horarios y solicitar visitas. El aviso de confirmación al comprador (WhatsApp + email) lo envía el sistema automáticamente cuando el propietario confirma la visita, no tú.
 - Si no hay vivienda asociada a la conversación, no llames a las tools de visitas; pide al comprador que contacte desde el anuncio de la vivienda en Idealista.
 - No solicites el DNI del comprador: no es necesario para reservar una visita.`
+}
+
+// --- Tool-calling loop ---
+
+async function runToolLoop(
+  system: string,
+  messages: unknown[],
+  context: { propertyId: string | null; waPhoneNumber: string; supabase: ReturnType<typeof createClient> }
+): Promise<{ finalText: string; requestVisitOk: boolean }> {
+  let finalText = ""
+  let requestVisitOk = false
+
+  for (let i = 0; i < MAX_TOOL_ITERATIONS; i++) {
+    const response = await callClaude(system, messages)
+
+    if (response.stop_reason !== "tool_use") {
+      finalText = response.content
+        .filter((b) => b.type === "text")
+        .map((b) => b.text)
+        .join("\n")
+        .trim()
+      break
+    }
+
+    messages.push({ role: "assistant", content: response.content })
+
+    const toolResults = []
+    for (const block of response.content) {
+      if (block.type === "tool_use" && block.name && block.id) {
+        const result = await executeTool(block.name, block.input ?? {}, context)
+        if (block.name === "request_visit" && (result as { success?: boolean })?.success === true) {
+          requestVisitOk = true
+        }
+        toolResults.push({
+          type: "tool_result",
+          tool_use_id: block.id,
+          content: JSON.stringify(result),
+        })
+      }
+    }
+    messages.push({ role: "user", content: toolResults })
+  }
+
+  return { finalText, requestVisitOk }
 }
 
 // --- Main handler ---
@@ -385,38 +429,28 @@ Deno.serve(async (req: Request) => {
     ]
 
     const system = buildSystemPrompt(property)
+    const toolContext = { propertyId, waPhoneNumber, supabase }
 
-    let finalText = ""
-    for (let i = 0; i < MAX_TOOL_ITERATIONS; i++) {
-      const response = await callClaude(system, anthropicMessages)
+    let { finalText, requestVisitOk } = await runToolLoop(system, anthropicMessages, toolContext)
 
-      if (response.stop_reason !== "tool_use") {
-        finalText = response.content
-          .filter((b) => b.type === "text")
-          .map((b) => b.text)
-          .join("\n")
-          .trim()
-        break
+    // Guardarraíl anti-alucinación: si el modelo afirma una reserva sin que
+    // request_visit haya tenido éxito en este turno, lo corregimos para no
+    // mentir al comprador (caso visto al reagendar con los datos ya recogidos).
+    if (/reservad|confirmad/i.test(finalText) && !requestVisitOk) {
+      anthropicMessages.push({ role: "assistant", content: finalText })
+      anthropicMessages.push({
+        role: "user",
+        content:
+          "[CORRECCIÓN DEL SISTEMA] No has llamado a request_visit con éxito en este turno, así que NO hay ninguna reserva y NO puedes decir que la visita está reservada ni confirmada. Si el comprador ya eligió día y hora y tienes su nombre, email y consentimiento, llama a get_available_slots y luego a request_visit con el slot_id correcto. Si falta algún dato, pídeselo. No afirmes ninguna reserva sin éxito de request_visit.",
+      })
+      const retry = await runToolLoop(system, anthropicMessages, toolContext)
+      requestVisitOk = requestVisitOk || retry.requestVisitOk
+      if (retry.finalText) finalText = retry.finalText
+      // Última red de seguridad: si AÚN afirma una reserva sin éxito, no mentir.
+      if (/reservad|confirmad/i.test(finalText) && !requestVisitOk) {
+        finalText =
+          "Perdona, no he podido completar la reserva ahora mismo. ¿Me confirmas de nuevo el día y la hora que prefieres y lo intento otra vez?"
       }
-
-      anthropicMessages.push({ role: "assistant", content: response.content })
-
-      const toolResults = []
-      for (const block of response.content) {
-        if (block.type === "tool_use" && block.name && block.id) {
-          const result = await executeTool(block.name, block.input ?? {}, {
-            propertyId,
-            waPhoneNumber,
-            supabase,
-          })
-          toolResults.push({
-            type: "tool_result",
-            tool_use_id: block.id,
-            content: JSON.stringify(result),
-          })
-        }
-      }
-      anthropicMessages.push({ role: "user", content: toolResults })
     }
 
     if (!finalText) {
