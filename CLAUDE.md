@@ -202,6 +202,20 @@ src/
 
 ## Registro de sesiones
 
+### 23 junio 2026 — B6 COMPLETO (resumen consolidado): cancelación por el PC + reagendado
+
+Las 3 tareas de B6 implementadas, desplegadas y **validadas e2e por WhatsApp** (reservar → confirmar → cancelar por el PC → reagendar → confirmar, con notificaciones y emails). Todo lo construido/cambiado:
+
+- **Tarea 1 — Cancelación:** Edge Function `cancel-visit-by-visitor` (verify_jwt=true, x-api-key) + tool `cancel_visit_by_visitor` en whatsapp-agent. Cancela SOLO visitas propias del comprador (filtra por `visitor_phone`; estados futuros `Pending to confirm`/`Confirmed`), update atómico → `Canceled by visitor`. Devuelve `needs_selection` (varias) o `no_visits` (ninguna). **No reabre** el slot.
+- **Tarea 2 — Reagendado:** prompt → reagendar = cancelar 1 vez + reservar (sin re-cancelar al elegir el nuevo hueco); tras cancelar ofrece `get_available_slots`.
+- **Tarea 3 — Aviso al CV:** `notifications` type `visit_canceled` → la PWA lo recibe por **Realtime** (`useNotifications` + `MainLayout` ya existían; cero cambios de front) **+ email al propietario** (Resend, template `ownerVisitCanceledByVisitorHtml` en `_shared/email-templates/visit-status.ts`) SOLO si la visita estaba `Confirmed`.
+- **Modelo del agente: Haiku 4.5 → `claude-sonnet-4-6`.** Motivo: Haiku fallaba repetidamente la disciplina de tool-calling (alucinaba/“narraba” reservas — "tu visita está reservada", "Reservando… un momento", "ha quedado registrada" — sin llamar a `request_visit`). `process-idealista-lead` sigue en `claude-haiku-4-5` (extracción simple).
+- **Guardarraíl anti-alucinación** (`runToolLoop` + post-chequeo en whatsapp-agent): si el texto final afirma una reserva (regex robusto `/(reserv|solicit|agend|confirm|registr)\w*(ad|and)|un momento|enseguida|procesando/i`) pero `request_visit` NO tuvo éxito en el turno → inyecta corrección y reintenta; si aún así afirma, mensaje seguro. Protege con cualquier modelo y **evita contaminar el historial** con confirmaciones falsas.
+- **Aprendizaje clave:** el historial de conversación (solo texto, sin bloques tool_use/tool_result) se **contaminaba** con las confirmaciones falsas de intentos rotos, y eso envenenaba turnos posteriores (incluso con Sonnet). El guardarraíl evita que se guarden confirmaciones falsas.
+- **Diseño del agente documentado en `docs/AGENT.md`.**
+
+> Las dos entradas siguientes (Sonnet/AGENT.md y B6 cancelación) son la crónica detallada de cómo se llegó aquí.
+
 ### 23 junio 2026 — Agente a Sonnet 4.6 + guardarraíl anti-alucinación + AGENT.md
 
 Probando B6, Haiku 4.5 falló DOS veces la disciplina de tool-calling: (1) alucinó "tu visita está reservada" sin llamar a `request_visit`; (2) "narró" la reserva ("Reservando… un momento") y terminó el turno sin actuar (conversación colgada).

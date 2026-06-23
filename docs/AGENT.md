@@ -66,7 +66,7 @@ reagendar** mostrando `get_available_slots`.
 |---|---|---|
 | `get_available_slots` | Lista huecos disponibles de la vivienda (agrupados por día) | Edge Function `get-available-slots` |
 | `request_visit` | Reserva una visita (slot → `Pending to confirm`) + registra consentimiento + notifica al CV | Edge Function `request-visit-slot` |
-| `cancel_visit_by_visitor` | Cancela una visita propia del PC (slot → `Canceled by visitor`) + notifica al CV | Edge Function `cancel-visit-by-visitor` |
+| `cancel_visit_by_visitor` | Cancela una visita propia del PC (slot → `Canceled by visitor`) + avisa al CV: notificación in-app (Realtime) + email si estaba `Confirmed` | Edge Function `cancel-visit-by-visitor` |
 
 Las tools del agente se ejecutan en `executeTool()`, que llama internamente a esas Edge
 Functions (con `Authorization: Bearer <anon>` + `x-api-key`).
@@ -78,10 +78,11 @@ Functions (con `Authorization: Bearer <anon>` + `x-api-key`).
 2. `runToolLoop()` ejecuta el bucle de tool-calling (máx. 5 iteraciones): llama al modelo,
    si pide una tool la ejecuta y le devuelve el resultado, y repite hasta que el modelo
    responde texto final.
-3. **Guardarraíl anti-alucinación:** si el texto final afirma/“narra” una reserva
-   (`reservando`, `reservada`, `confirmada`, `un momento`…) pero `request_visit` NO tuvo
-   éxito en el turno, se inyecta una corrección y se reintenta; si aún así no reserva, se
-   sustituye por un mensaje seguro (nunca se le miente al comprador).
+3. **Guardarraíl anti-alucinación:** si el texto final afirma una reserva (cualquier forma
+   de reservar/solicitar/agendar/confirmar/registrar en -ado/-ada/-ando, o "un momento" /
+   "procesando") pero `request_visit` NO tuvo éxito en el turno, se inyecta una corrección y
+   se reintenta; si aún así no reserva, se sustituye por un mensaje seguro (nunca se le miente
+   al comprador). Esto además evita contaminar el historial con confirmaciones falsas.
 4. Se responde por WhatsApp Cloud API y se persiste el turno con `save-message`.
 
 > **Limitación conocida:** el historial persistido es solo texto, no los bloques de
