@@ -201,7 +201,7 @@ src/
 
 **B13 — Negocio y Legal: 🔄 EN CURSO (paralelo, no técnico)**
 - Revisión pricing "primera venta gratis" · contrato reconocimiento honorarios comprador (abogado) · momento de firma · plan de captación.
-- ✅ (técnico, 23 junio) Gate de reconocimiento de honorarios del comprador **antes de confirmar visita** implementado en `whatsapp-agent` (estado `awaiting_fee_consent` + `recordFeeConsent`, opción determinista). Pendiente: aplicar migración + deploy + e2e. Ver Registro de sesiones.
+- ✅ (técnico, 24 junio — **desplegado y validado e2e**) Gate de reconocimiento de honorarios del comprador **antes de confirmar visita** en `whatsapp-agent` (estado `awaiting_fee_consent` + `recordFeeConsent`, determinista; % configurable por vivienda `properties.buyer_fee_percent`). Ver Registro de sesiones.
 
 **B14 — Infraestructura de desarrollo: ✅ COMPLETADO (12 junio 2026)**
 - ✅ Supabase MCP conectado en Claude Code (read-only, scoped al proyecto).
@@ -215,7 +215,7 @@ src/
 
 ## Registro de sesiones
 
-### 23 junio 2026 — Gate de honorarios del comprador (B13 → integrado en B5)
+### 24 junio 2026 — Gate de honorarios del comprador (B13 → integrado en B5) ✅ VALIDADO E2E
 
 Antes de confirmar una visita, el PC debe **aceptar explícitamente la comisión del 1% del comprador**. Consentimiento capturado dentro del flujo de WhatsApp (sin canal externo), con trazabilidad para una reclamación judicial. Implementado como **gate determinista fuera del LLM** (interceptor antes del loop de tool-calling), no como tool del LLM, por robustez legal.
 
@@ -232,7 +232,7 @@ Antes de confirmar una visita, el PC debe **aceptar explícitamente la comisión
 - **No tocado** (Punto 7): Salesforce, `offers`/`create_offer` (el DNI sigue pidiéndose ahí, B9), ni las Edge Functions de soporte (a `request-visit-slot` solo se la consume).
 - **Migración requerida** (aplicar manual — MCP read-only): `supabase/sql/2026-06-23-fee-gate.sql` (consents 4 cols + `agent_state` + índice parcial + `properties.buyer_fee_percent`). Cron: re-ejecutar el bloque `cleanup-old-slots` de `supabase/sql/setup-crons.sql`.
 - **Cambios:** `whatsapp-agent/index.ts` (constantes verbatim, máquina de estados, helpers `classifyFeeReply`/`recordFeeConsent`/`setAgentState`/`enterFeeGate`/`saveTurn`, `request_visit` reconvertido en disparador del gate), `supabase/sql/2026-06-23-fee-gate.sql` (nuevo), `supabase/sql/setup-crons.sql` (Op 3).
-- **Estado:** código commiteado. **Pendiente:** (1) aplicar migración + cron en el SQL Editor; (2) deploy del agente (push a `main`) **DESPUÉS** de la migración — el agente hace `select(... agent_state)`, desplegar antes degradaría la carga de contexto (blast radius limitado: Meta en modo Dev); (3) validación e2e por WhatsApp.
+- **Estado: ✅ DESPLEGADO Y VALIDADO E2E (24 junio).** Migración aplicada (6 columnas + cron Op 3 confirmados vía MCP), `whatsapp-agent` v26 en producción. Prueba real por WhatsApp (número 34679235007, vivienda Santander al 1%): elegir slot → Hero envía el texto verbatim del 1% → "Sí" → `consents` registró `buyer_fee_acknowledgement` con el **texto exacto + el wamid del mensaje de aceptación** + property_id + visit_slot_id, y aparte el `visit_request` (RGPD) → visita `Pending to confirm` → `agent_state` limpio. Sin alucinaciones (guardarraíl OK). Pendiente menor: validar el % variable (0,5% / 0%) y, si se quiere, afinar un reask de T&C en la recogida de datos (ajeno al gate).
 
 ### 23 junio 2026 — B7 COMPLETO: recordatorios de visita + crons arreglados
 
