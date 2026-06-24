@@ -49,7 +49,7 @@ Razones: Make no tiene bucle nativo de tool calling; consume 5-10 operaciones po
 | Confirmación/cancelación visita | PC | notify-visit → webhook Make → Gmail | **notify-visit → Resend + WhatsApp Cloud API directo** |
 | Recordatorio 24h | CV + PC | visit-reminders → webhook Make → Gmail | **visit-reminders → Resend directo** |
 | Decisión sobre oferta | PC | manage-offer → webhook Make → Gmail | **manage-offer → Resend + WhatsApp directo** |
-| Post-visita / feedback | PC | complete-visits → webhook Make → Gmail | **APLAZADO post-lanzamiento (B11)** |
+| Post-visita / feedback | PC | complete-visits → webhook Make → Gmail | **post-visit-followup → WhatsApp directo (B9): follow-up ~1h + feedback** |
 
 - Los **Escenarios 3, 4, 5 y 6 de Make están ELIMINADOS**. El Escenario 3 (activo en v3.0) se desactiva cuando se despliegue `notify-visit` v3.1.
 - El secret `MAKE_WEBHOOK_NOTIFY_VISIT` queda obsoleto tras la reescritura de `notify-visit`: eliminarlo.
@@ -85,7 +85,8 @@ Se mantienen las eliminaciones de v3.0 (sin Events, sin Quotes, sin sync de prop
 |---|---|---|
 | B8 | Dashboard de Operaciones (app completa) | Table Editor de Supabase + 3-4 vistas SQL guardadas |
 | B10 | Chat Hero en la PWA | El CV contacta por teléfono/email. `chat-with-hero` se reaprovechará. |
-| B11 | Feedback post-visita al PC | Ninguno |
+
+> **B11 (post-visita) se adelantó e integró en B9** (el comprador no sabría cómo ofertar sin un empujón tras la visita): `post-visit-followup` + recogida de feedback. Ya no está aplazado.
 
 ### 6. DNI DEL PC — Se captura en la oferta, no antes de la visita
 
@@ -123,9 +124,12 @@ El flujo RGPD del agente de WhatsApp pide consentimiento de privacidad al inicio
 | `process-idealista-lead` | HTTP POST desde Make Esc. 2 | ✅ Desplegada (B5, verify_jwt=false) — pendiente reconfigurar Make Escenario 2 |
 | `cancel-visit-by-visitor` | Tool del agente | ✅ Completada (B6): cancela + notifica al CV (Realtime) |
 | `visit-reminders` | Cron diario 07:00 UTC (x-api-key, verify_jwt=false) | ✅ Completada (B7): recordatorio el día antes — WhatsApp `recordatorio_visita` + email al PC, email al CV |
-| `manage-offer` | HTTP POST desde PWA | ⬜ Pendiente (B9) — envía con Resend directo |
-| `create-offer` | Tool del agente | ⬜ Pendiente (B9) — con gate de honorarios |
-| `complete-visits` | Cron diario 23:00 | ⬜ Aplazado (B11) — verificar si el cron ya existe antes de crear |
+| `manage-offer` | HTTP POST desde PWA | ✅ B9 (código): accept/deny/counter + Resend + WhatsApp directo |
+| `create-offer` | Tool del agente | ✅ B9 (código): oferta del PC (importe+DNI) + verifica honorarios |
+| `respond-counteroffer` | Tool del agente | ✅ B9 (código): PC acepta/rechaza la contraoferta del CV |
+| `post-visit-followup` | Cron cada 30 min | ✅ B9 (código): post-visita ~1h después (B11 integrado) |
+| `save-visit-feedback` | Tool del agente | ✅ B9 (código): feedback del PC en la visita |
+| `complete-visits` | Cron diario 23:00 (SQL inline) | ✅ Existe en setup-crons.sql |
 | `chat-with-hero` | HTTP POST desde PWA | ⏸️ Aplazada (B10, post-lanzamiento) |
 
 ### Secrets de Supabase (estado objetivo v3.1)
@@ -179,7 +183,7 @@ El flujo RGPD del agente de WhatsApp pide consentimiento de privacidad al inicio
 4. **Todo email transaccional sale por Resend** desde Edge Functions, con plantillas HTML embebidas en el código. Nunca por Gmail/Make.
 5. El agente de WhatsApp vive en la Edge Function `whatsapp-agent`. El webhook de Meta apunta a ella. Validar SIEMPRE la firma HMAC en POST y responder al hub.challenge en GET.
 6. **NO escribir** en `salesforce_event_id` (visit_slots) ni `salesforce_quote_id` (offers).
-7. **NO construir** B8 (Dashboard), B10 (chat PWA) ni B11 (post-visita) hasta el post-lanzamiento.
+7. **NO construir** B8 (Dashboard) ni B10 (chat PWA) hasta el post-lanzamiento. (B11 post-visita se adelantó: integrado en B9.)
 8. El DNI del PC se solicita en `create_offer`, no antes de la visita.
 9. Parsing de emails de Idealista: con LLM y salida JSON + alerta de fallo. Nunca regex.
 10. El MCP de Supabase está en read-only: generar SQL de migraciones/crons para aplicación manual, salvo instrucción explícita en contrario.

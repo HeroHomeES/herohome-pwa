@@ -223,6 +223,59 @@ const TOOLS = [
       required: [],
     },
   },
+  {
+    name: "create_offer",
+    description:
+      "Registra una oferta de compra del comprador sobre la vivienda de esta conversación. Úsala cuando el comprador quiera hacer una oferta. Antes de llamarla necesitas DOS datos: el importe de la oferta en euros y el DNI del comprador (obligatorio para formalizar la oferta; solo se pide al ofertar, nunca para una visita). El propietario decidirá después; NO confirmes que la oferta ha sido aceptada.",
+    input_schema: {
+      type: "object",
+      properties: {
+        amount: {
+          type: "number",
+          description: "Importe de la oferta en euros (solo el número, sin símbolo ni separadores).",
+        },
+        dni: { type: "string", description: "DNI o NIE del comprador. Obligatorio para formalizar la oferta." },
+      },
+      required: ["amount", "dni"],
+    },
+  },
+  {
+    name: "respond_to_counteroffer",
+    description:
+      "El comprador responde a una contraoferta viva del propietario ACEPTÁNDOLA o RECHAZÁNDOLA. Úsala solo si el contexto indica que hay una contraoferta del propietario pendiente. Si el comprador quiere proponer un importe distinto en vez de aceptar o rechazar, usa create_offer. NO confirmes el resultado antes de que la tool devuelva éxito.",
+    input_schema: {
+      type: "object",
+      properties: {
+        action: {
+          type: "string",
+          enum: ["accept", "reject"],
+          description:
+            "accept si el comprador acepta la contraoferta del propietario; reject si la rechaza y cierra la negociación.",
+        },
+      },
+      required: ["action"],
+    },
+  },
+  {
+    name: "save_visit_feedback",
+    description:
+      "Guarda el feedback del comprador tras su visita. Úsala cuando, tras una visita, el comprador te diga si le interesa la vivienda o no (y por qué). outcome='not_interested' si no le encaja (incluye el motivo en feedback), 'interested' si le interesa.",
+    input_schema: {
+      type: "object",
+      properties: {
+        outcome: {
+          type: "string",
+          enum: ["interested", "not_interested"],
+          description: "interested si le interesa la vivienda; not_interested si no le encaja.",
+        },
+        feedback: {
+          type: "string",
+          description: "Lo que el comprador haya dicho sobre la vivienda (motivo de su decisión). Opcional.",
+        },
+      },
+      required: ["outcome"],
+    },
+  },
 ]
 
 // --- Internal Edge Function calls (tools) ---
@@ -339,6 +392,71 @@ async function executeTool(
     const { data } = await callInternalFunction("cancel-visit-by-visitor", {
       method: "POST",
       body: JSON.stringify(reqBody),
+    })
+    return data
+  }
+
+  if (name === "create_offer") {
+    if (!context.propertyId) {
+      return { error: "No hay una vivienda asociada a esta conversación todavía." }
+    }
+    const amount = typeof input.amount === "number" ? input.amount : Number(input.amount)
+    const dni = typeof input.dni === "string" ? input.dni.trim() : ""
+    if (!amount || amount <= 0) {
+      return { error: "Falta el importe de la oferta (un número en euros mayor que 0). Pídeselo al comprador." }
+    }
+    if (!dni) {
+      return { error: "Falta el DNI del comprador (obligatorio para formalizar la oferta). Pídeselo." }
+    }
+    const { data } = await callInternalFunction("create-offer", {
+      method: "POST",
+      body: JSON.stringify({
+        property_id: context.propertyId,
+        wa_phone_number: context.waPhoneNumber,
+        amount,
+        dni,
+      }),
+    })
+    return data
+  }
+
+  if (name === "respond_to_counteroffer") {
+    if (!context.propertyId) {
+      return { error: "No hay una vivienda asociada a esta conversación todavía." }
+    }
+    const action = input.action === "accept" || input.action === "reject" ? input.action : null
+    if (!action) {
+      return { error: "action debe ser 'accept' o 'reject'." }
+    }
+    const { data } = await callInternalFunction("respond-counteroffer", {
+      method: "POST",
+      body: JSON.stringify({
+        property_id: context.propertyId,
+        wa_phone_number: context.waPhoneNumber,
+        action,
+      }),
+    })
+    return data
+  }
+
+  if (name === "save_visit_feedback") {
+    if (!context.propertyId) {
+      return { error: "No hay una vivienda asociada a esta conversación todavía." }
+    }
+    const outcome =
+      input.outcome === "interested" || input.outcome === "not_interested" ? input.outcome : null
+    if (!outcome) {
+      return { error: "outcome debe ser 'interested' o 'not_interested'." }
+    }
+    const feedback = typeof input.feedback === "string" ? input.feedback : ""
+    const { data } = await callInternalFunction("save-visit-feedback", {
+      method: "POST",
+      body: JSON.stringify({
+        property_id: context.propertyId,
+        wa_phone_number: context.waPhoneNumber,
+        outcome,
+        feedback,
+      }),
     })
     return data
   }
@@ -473,7 +591,7 @@ async function callClaude(system: string, messages: unknown[]): Promise<Anthropi
   return await res.json()
 }
 
-function buildSystemPrompt(property: { street?: string; city?: string; sales_price?: number } | null): string {
+function buildSystemPrompt(property: { street?: string; city?: string; sales_price?: number } | null, buyerContext: string): string {
   const propertyContext = property
     ? `La vivienda sobre la que está consultando este comprador es: ${[property.street, property.city]
         .filter(Boolean)
@@ -483,8 +601,8 @@ function buildSystemPrompt(property: { street?: string; city?: string; sales_pri
   return `Eres Hero, el asistente conversacional de Herohome, una inmobiliaria. Hablas por WhatsApp con un potencial comprador (PC) interesado en una vivienda. Responde siempre en español, con un tono cercano, profesional y breve (mensajes cortos, propios de WhatsApp).
 
 ${propertyContext}
-
-Tu objetivo es ayudar al comprador a consultar disponibilidad de visitas, reservar una, y cancelar o reagendar su visita si lo necesita.
+${buyerContext ? `\n${buyerContext}\n` : ""}
+Tu objetivo es ayudar al comprador a consultar disponibilidad de visitas, reservar una, cancelar o reagendar su visita, y registrar una oferta de compra si decide comprar.
 
 Reglas importantes:
 - NUNCA digas que una visita está reservada o confirmada salvo que la tool request_visit te haya devuelto un resultado de éxito en ESTE mismo turno. Está terminantemente prohibido inventar o anticipar una confirmación. Esto aplica SIEMPRE, incluso al REAGENDAR o si ya tienes los datos del comprador de un paso anterior: tener el nombre, el email y el consentimiento NO reserva nada; solo request_visit con éxito reserva. Para CADA reserva (incluida la nueva tras reagendar) debes volver a llamar a get_available_slots y a request_visit.
@@ -500,11 +618,50 @@ Reglas importantes:
   - Si devuelve no_visits: SOLO dile que no consta ninguna visita activa a su nombre si lo que pedía era CANCELAR. Si está reagendando o quiere reservar un nuevo horario, NO menciones que no tiene visitas; continúa y reserva el horario elegido con el procedimiento de reserva.
   - Si la cancelación tiene ÉXITO, confírmasela y OFRÉCELE REAGENDAR: llama a get_available_slots, muéstrale los horarios y pregúntale si quiere reservar otra visita.
 - REAGENDAR = cancelar la visita actual UNA sola vez (cancel_visit_by_visitor) y luego reservar la nueva. Una vez cancelada, para la nueva reserva usa SOLO get_available_slots + request_visit; NO vuelvas a llamar a cancel_visit_by_visitor.
+- Para registrar una OFERTA de compra del comprador, usa la tool create_offer:
+  - Necesitas el IMPORTE de la oferta (en euros) y el DNI del comprador. Si falta alguno, pídeselo antes de llamarla. El DNI es OBLIGATORIO para formalizar la oferta (lo necesitaremos para el contrato); solo se pide al ofertar, nunca para una visita.
+  - Llama a create_offer con el importe y el DNI. NUNCA digas que la oferta ha sido aceptada: la decisión es del propietario, que responderá. Tras un create_offer con éxito, dile al comprador que su oferta ha quedado registrada y que el propietario le responderá pronto.
+  - Si create_offer devuelve below_threshold=true, dile con tacto que su oferta podría quedar por debajo de lo que pide el propietario, pero que se la trasladamos igualmente.
+- Si el contexto indica que el propietario tiene una CONTRAOFERTA pendiente, el comprador puede aceptarla, rechazarla o proponer un importe nuevo:
+  - Si la ACEPTA o la RECHAZA, usa respond_to_counteroffer con action="accept" o "reject". No confirmes el resultado hasta que la tool devuelva éxito (al aceptar, dile que el equipo se pondrá en contacto para los siguientes pasos; al rechazar, despídete amablemente).
+  - Si propone un IMPORTE NUEVO, usa create_offer con ese importe y el DNI, igual que una oferta normal.
+- Cuando el comprador responda a un mensaje de "¿qué te ha parecido la visita?" (tras haber visitado):
+  - Si muestra interés o quiere ofertar, ayúdale a hacer su oferta (procedimiento de create_offer).
+  - Si dice que NO le interesa, pregúntale con amabilidad qué es lo que no le ha encajado ("Entiendo, ¿podrías decirme qué es lo que no te ha convencido?"). Cuando te responda (o si no quiere decírtelo), llama a save_visit_feedback con outcome="not_interested" y feedback con lo que te haya dicho, y despídete amablemente.
+  - Si te confirma que le interesa pero todavía no quiere ofertar, registra save_visit_feedback con outcome="interested".
 - Para mostrar disponibilidad usa get_available_slots y presenta los horarios agrupados por día.
 - No inventes horarios, propiedades ni datos que no provengan de las tools.
-- NUNCA digas que has enviado un email ni que realizas acciones fuera de tus tools: solo puedes consultar horarios y solicitar visitas. El aviso de confirmación al comprador (WhatsApp + email) lo envía el sistema automáticamente cuando el propietario confirma la visita, no tú.
+- NUNCA digas que has enviado un email ni que realizas acciones fuera de tus tools: solo puedes consultar horarios, gestionar visitas y registrar ofertas con tus tools. El aviso de confirmación al comprador (WhatsApp + email) lo envía el sistema automáticamente cuando el propietario confirma la visita, no tú.
 - Si no hay vivienda asociada a la conversación, no llames a las tools de visitas; pide al comprador que contacte desde el anuncio de la vivienda en Idealista.
-- No solicites el DNI del comprador: no es necesario para reservar una visita.`
+- No pidas el DNI para una VISITA (no hace falta). El DNI solo se solicita al registrar una OFERTA de compra (tool create_offer).`
+}
+
+// Resumen del estado de la negociación del comprador (ofertas vivas) para
+// inyectarlo en el system prompt: evita ofertas duplicadas y permite a Hero
+// reconocer una contraoferta del propietario pendiente de respuesta.
+async function loadBuyerContext(
+  supabase: ReturnType<typeof createClient>,
+  propertyId: string | null,
+  waPhoneNumber: string
+): Promise<string> {
+  if (!propertyId) return ""
+  const { data: offers } = await supabase
+    .from("offers")
+    .select("initiated_by, amount, status, created_at")
+    .eq("property_id", propertyId)
+    .eq("buyer_phone", waPhoneNumber)
+    .order("created_at", { ascending: false })
+  if (!offers || offers.length === 0) return ""
+
+  const pendingOwner = offers.find((o) => o.status === "Presented" && o.initiated_by === "Owner")
+  const pendingBuyer = offers.find((o) => o.status === "Presented" && o.initiated_by === "Buyer")
+  if (pendingOwner) {
+    return `Estado de la negociación: el propietario ha hecho una CONTRAOFERTA de ${pendingOwner.amount} € pendiente de la respuesta del comprador. Si la acepta o la rechaza, usa respond_to_counteroffer; si propone un importe nuevo, usa create_offer.`
+  }
+  if (pendingBuyer) {
+    return `Estado de la negociación: el comprador ya tiene una oferta de ${pendingBuyer.amount} € presentada y pendiente de respuesta del propietario. No registres otra oferta igual salvo que quiera cambiar el importe.`
+  }
+  return ""
 }
 
 // --- Tool-calling loop ---
@@ -513,9 +670,10 @@ async function runToolLoop(
   system: string,
   messages: unknown[],
   context: ToolContext
-): Promise<{ finalText: string; requestVisitOk: boolean }> {
+): Promise<{ finalText: string; requestVisitOk: boolean; offerActionOk: boolean }> {
   let finalText = ""
   let requestVisitOk = false
+  let offerActionOk = false
 
   for (let i = 0; i < MAX_TOOL_ITERATIONS; i++) {
     const response = await callClaude(system, messages)
@@ -538,6 +696,12 @@ async function runToolLoop(
         if (block.name === "request_visit" && (result as { success?: boolean })?.success === true) {
           requestVisitOk = true
         }
+        if (block.name === "create_offer" && (result as { success?: boolean })?.success === true) {
+          offerActionOk = true
+        }
+        if (block.name === "respond_to_counteroffer" && (result as { success?: boolean })?.success === true) {
+          offerActionOk = true
+        }
         toolResults.push({
           type: "tool_result",
           tool_use_id: block.id,
@@ -548,7 +712,7 @@ async function runToolLoop(
     messages.push({ role: "user", content: toolResults })
   }
 
-  return { finalText, requestVisitOk }
+  return { finalText, requestVisitOk, offerActionOk }
 }
 
 // --- Main handler ---
@@ -746,10 +910,11 @@ Deno.serve(async (req: Request) => {
       { role: "user", content: userText },
     ]
 
-    const system = buildSystemPrompt(property)
+    const buyerContext = await loadBuyerContext(supabase, propertyId, waPhoneNumber)
+    const system = buildSystemPrompt(property, buyerContext)
     const toolContext: ToolContext = { propertyId, waPhoneNumber, supabase, feeGate: null, buyerFeePercent }
 
-    let { finalText, requestVisitOk } = await runToolLoop(system, anthropicMessages, toolContext)
+    let { finalText, requestVisitOk, offerActionOk } = await runToolLoop(system, anthropicMessages, toolContext)
 
     // ---- Entrada al gate de honorarios ----
     // request_visit reunió los datos y pidió reservar. En vez de reservar, enviamos
@@ -763,7 +928,7 @@ Deno.serve(async (req: Request) => {
     // Guardarraíl anti-alucinación: si el modelo afirma una reserva sin que
     // request_visit haya tenido éxito en este turno, lo corregimos para no
     // mentir al comprador (caso visto al reagendar con los datos ya recogidos).
-    if (/(reserv|solicit|agend|confirm|registr)\w*(ad|and)|un momento|enseguida|procesando/i.test(finalText) && !requestVisitOk) {
+    if (/(reserv|solicit|agend|confirm|registr)\w*(ad|and)|un momento|enseguida|procesando/i.test(finalText) && !requestVisitOk && !offerActionOk) {
       anthropicMessages.push({ role: "assistant", content: finalText })
       anthropicMessages.push({
         role: "user",
@@ -772,9 +937,10 @@ Deno.serve(async (req: Request) => {
       })
       const retry = await runToolLoop(system, anthropicMessages, toolContext)
       requestVisitOk = requestVisitOk || retry.requestVisitOk
+      offerActionOk = offerActionOk || retry.offerActionOk
       if (retry.finalText) finalText = retry.finalText
       // Última red de seguridad: si AÚN afirma una reserva sin éxito, no mentir.
-      if (/(reserv|solicit|agend|confirm|registr)\w*(ad|and)|un momento|enseguida|procesando/i.test(finalText) && !requestVisitOk) {
+      if (/(reserv|solicit|agend|confirm|registr)\w*(ad|and)|un momento|enseguida|procesando/i.test(finalText) && !requestVisitOk && !offerActionOk) {
         finalText =
           "Perdona, no he podido completar la reserva ahora mismo. ¿Me confirmas de nuevo el día y la hora que prefieres y lo intento otra vez?"
       }

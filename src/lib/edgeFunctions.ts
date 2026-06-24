@@ -22,3 +22,30 @@ export async function callEdgeFunction(
     return false
   }
 }
+
+// Variante que devuelve el detalle del error (las Edge Functions responden
+// { error: string }). Se usa cuando la UI necesita mostrar el motivo del fallo.
+export async function invokeEdgeFunction(
+  name: string,
+  body: Record<string, unknown>
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const { data } = await supabase.auth.getSession()
+    const token = data.session?.access_token ?? ''
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/${name}`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    })
+    if (!res.ok) {
+      const json = await res.json().catch(() => null)
+      return { ok: false, error: json?.error ?? `Error ${res.status}` }
+    }
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) }
+  }
+}

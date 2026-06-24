@@ -18,3 +18,7 @@ verify_jwt = false
 # con JWT de usuario (modo single-property; el ownership se valida en la función).
 [functions.generate-slots]
 verify_jwt = false
+
+# post-visit-followup lo invoca el cron (pg_cron) con x-api-key, sin JWT de Supabase.
+[functions.post-visit-followup]
+verify_jwt = false

@@ -40,7 +40,6 @@ export interface AvailabilityDay {
 
 export interface Offer {
   id: string
-  salesforce_quote_id: string
   property_id: string
   parent_offer_id: string | null
   initiated_by: 'Buyer' | 'Owner'

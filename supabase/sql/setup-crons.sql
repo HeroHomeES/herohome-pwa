@@ -157,6 +157,34 @@ SELECT cron.schedule(
 
 
 -- ================================================================
+-- CRON 5 — post-visit-followup
+-- Cada 30 minutos
+-- Llama a la Edge Function post-visit-followup (con x-api-key) → envía el
+-- mensaje post-visita ~1h después de cada visita Confirmed para invitar a
+-- ofertar o recoger feedback. Idempotente vía visit_slots.post_visit_sent_at.
+-- ================================================================
+
+SELECT cron.unschedule(jobid)
+FROM cron.job
+WHERE jobname = 'post-visit-followup';
+
+SELECT cron.schedule(
+  'post-visit-followup',
+  '*/30 * * * *',                     -- cada 30 minutos
+  $$
+  SELECT net.http_post(
+    url     := 'https://zqkvcphtqmibttgnivku.supabase.co/functions/v1/post-visit-followup',
+    headers := jsonb_build_object(
+      'Content-Type', 'application/json',
+      'x-api-key',    'TU_HEROHOME_API_KEY_AQUI'
+    ),
+    body    := '{}'::jsonb
+  );
+  $$
+);
+
+
+-- ================================================================
 -- VERIFICACIÓN — ejecuta esto al final para confirmar el registro
 -- ================================================================
 SELECT
@@ -170,6 +198,7 @@ WHERE jobname IN (
   'generate-daily-slots',
   'cleanup-old-slots',
   'complete-visits',
-  'visit-reminders'
+  'visit-reminders',
+  'post-visit-followup'
 )
 ORDER BY jobname;

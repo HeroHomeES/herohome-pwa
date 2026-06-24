@@ -23,11 +23,17 @@ Ayudar al comprador a:
 1. **Consultar** la disponibilidad de visitas de la vivienda.
 2. **Reservar** una visita.
 3. **Cancelar** o **reagendar** su visita.
+4. **Hacer una oferta** de compra y **negociar** (responder a las contraofertas del propietario).
+5. **Dar feedback** tras la visita (y, si le interesa, ofertar).
 
 ## 3. Contexto que se le inyecta (por conversación)
 
 En cada turno, el system prompt se construye con el contexto de **la vivienda asociada
 a esa conversación** (dirección y precio), que se obtiene de `whatsapp_conversations.property_id`.
+
+Además, si el comprador tiene **ofertas vivas** en esa vivienda se inyecta un resumen de la
+negociación (`loadBuyerContext`): p.ej. una contraoferta del propietario pendiente de su
+respuesta, o una oferta suya ya presentada (para no duplicarla).
 
 - Si **hay vivienda asociada** → Hero opera con normalidad sobre esa vivienda.
 - Si **no hay vivienda asociada** → no usa las tools de visitas; pide al comprador que
@@ -67,6 +73,9 @@ reagendar** mostrando `get_available_slots`.
 | `get_available_slots` | Lista huecos disponibles de la vivienda (agrupados por día) | Edge Function `get-available-slots` |
 | `request_visit` | Reserva una visita (slot → `Pending to confirm`) + registra consentimiento + notifica al CV | Edge Function `request-visit-slot` |
 | `cancel_visit_by_visitor` | Cancela una visita propia del PC (slot → `Canceled by visitor`) + avisa al CV: notificación in-app (Realtime) + email si estaba `Confirmed` | Edge Function `cancel-visit-by-visitor` |
+| `create_offer` | Registra una oferta del PC (importe + DNI); verifica honorarios; avisa al CV (in-app + email) y al equipo | Edge Function `create-offer` |
+| `respond_to_counteroffer` | El PC acepta/rechaza la contraoferta viva del CV; cierra la negociación y avisa al CV/equipo | Edge Function `respond-counteroffer` |
+| `save_visit_feedback` | Guarda el feedback post-visita del PC (outcome + motivo, texto raw) en la visita | Edge Function `save-visit-feedback` |
 
 Las tools del agente se ejecutan en `executeTool()`, que llama internamente a esas Edge
 Functions (con `Authorization: Bearer <anon>` + `x-api-key`).
@@ -83,6 +92,8 @@ Functions (con `Authorization: Bearer <anon>` + `x-api-key`).
    "procesando") pero `request_visit` NO tuvo éxito en el turno, se inyecta una corrección y
    se reintenta; si aún así no reserva, se sustituye por un mensaje seguro (nunca se le miente
    al comprador). Esto además evita contaminar el historial con confirmaciones falsas.
+   El guardarraíl también reconoce las **acciones de oferta** con éxito (`create_offer` /
+   `respond_to_counteroffer`, vía el flag `offerActionOk`) para no corregir confirmaciones legítimas.
 4. Se responde por WhatsApp Cloud API y se persiste el turno con `save-message`.
 
 > **Limitación conocida:** el historial persistido es solo texto, no los bloques de
