@@ -47,11 +47,14 @@ Deno.serve(async (req: Request) => {
   const endedBefore = new Date(now.getTime() - 60 * 60 * 1000).toISOString() // hace ≥1h
   const endedAfter = new Date(now.getTime() - 12 * 60 * 60 * 1000).toISOString() // ventana de 12h (no retroactivo)
 
-  // Visitas confirmadas que terminaron hace 1–12h y aún no tienen follow-up.
+  // Visitas que terminaron hace 1–12h y aún no tienen follow-up. Incluimos
+  // 'Completed' además de 'Confirmed': el cron complete-visits (23:00) puede
+  // marcar Completed una visita de la tarde-noche antes de que dispare este
+  // follow-up de ~1h. La ventana de 12h + post_visit_sent_at evitan duplicados.
   const { data: visits, error } = await supabase
     .from("visit_slots")
     .select("id, property_id, visitor_name, visitor_phone")
-    .eq("status", "Confirmed")
+    .in("status", ["Confirmed", "Completed"])
     .lt("end_time", endedBefore)
     .gt("end_time", endedAfter)
     .is("post_visit_sent_at", null)
