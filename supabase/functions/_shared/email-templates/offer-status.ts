@@ -2,7 +2,7 @@
 // Al PC: aceptada / rechazada / contraoferta. Al equipo: alerta interina
 // (sustituye al dashboard mientras B8 está aplazado).
 
-import { emailShell } from "./shell.ts"
+import { emailShell, OPEN_APP_CTA } from "./shell.ts"
 
 function formatEuros(amount: number): string {
   return new Intl.NumberFormat("es-ES", {
@@ -114,6 +114,7 @@ export function offerCvBuyerAcceptedHtml(params: {
     ],
     closing:
       "Nos pondremos en contacto contigo y con el comprador para los siguientes pasos (contrato de arras y firma).",
+    cta: OPEN_APP_CTA,
   })
 }
 
@@ -128,6 +129,7 @@ export function offerCvBuyerRejectedHtml(params: {
     intro: `${saludo}te informamos de que el comprador ha rechazado tu contraoferta y ha cerrado la negociación por esta vivienda.`,
     detailRows: [{ label: "Vivienda", value: params.propertyAddress }],
     closing: "Puedes consultar el estado de tus ofertas en tu panel de Herohome.",
+    cta: OPEN_APP_CTA,
   })
 }
 
@@ -146,6 +148,7 @@ export function offerCvNewBuyerOfferHtml(params: {
       { label: "Nueva oferta del comprador", value: formatEuros(params.amount) },
     ],
     closing: "Entra en tu panel de Herohome para aceptarla, rechazarla o hacer una nueva contraoferta.",
+    cta: OPEN_APP_CTA,
   })
 }
 
@@ -164,5 +167,6 @@ export function offerCvNewOfferHtml(params: {
       { label: "Oferta del comprador", value: formatEuros(params.amount) },
     ],
     closing: "Entra en tu panel de Herohome para aceptarla, rechazarla o hacer una contraoferta.",
+    cta: OPEN_APP_CTA,
   })
 }

@@ -1,7 +1,7 @@
 // Plantillas de email para confirmación / cancelación de visita (PC).
 // Branding alineado con welcome.ts (Inter, #5B5CFF, #0A0E17, #F8FAFC).
 
-import { emailShell } from "./shell.ts"
+import { emailShell, OPEN_APP_CTA } from "./shell.ts"
 
 interface VisitEmailParams {
   visitorName: string
@@ -56,6 +56,7 @@ export function ownerVisitCanceledByVisitorHtml(params: {
       { label: "Comprador", value: params.visitorName },
     ],
     closing: "Puedes consultar el estado de tus visitas en tu panel de Herohome.",
+    cta: OPEN_APP_CTA,
   })
 }
 
@@ -95,5 +96,6 @@ export function visitReminderCvHtml(params: {
       { label: "Visitante", value: params.visitorName || "—" },
     ],
     closing: "Puedes ver el detalle en tu panel de Herohome.",
+    cta: OPEN_APP_CTA,
   })
 }

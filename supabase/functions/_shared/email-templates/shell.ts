@@ -1,12 +1,16 @@
 // Shell HTML compartido para los emails transaccionales (branding Herohome:
 // Inter, #5B5CFF, #0A0E17, #F8FAFC). Usado por visit-status.ts y offer-status.ts.
 
+// Botón CTA al panel del propietario (CV). Solo en emails dirigidos al CV.
+export const OPEN_APP_CTA = { label: "Abrir aplicación", url: "https://app.herohome.es/" }
+
 export function emailShell(opts: {
   accentColor: string
   heading: string
   intro: string
   detailRows: { label: string; value: string }[]
   closing: string
+  cta?: { label: string; url: string }
 }): string {
   const rows = opts.detailRows
     .map(
@@ -98,6 +102,16 @@ export function emailShell(opts: {
             </td>
           </tr>
 
+          ${
+            opts.cta
+              ? `<!-- CTA -->
+          <tr>
+            <td style="padding:0 24px 28px 24px;">
+              <a href="${opts.cta.url}" target="_blank" style="display:inline-block;background-color:#5B5CFF;background-image:linear-gradient(to bottom,#5B5CFF,#4B4CDB);color:#FFFFFF;font-family:Inter,system-ui,-apple-system,sans-serif;font-size:15px;font-weight:600;text-decoration:none;padding:12px 26px;border-radius:8px;">${escapeHtml(opts.cta.label)}</a>
+            </td>
+          </tr>`
+              : ""
+          }
           <!-- Pie -->
           <tr>
             <td style="background-color:#0A0E17;border-radius:0 0 12px 12px;padding:24px;">
