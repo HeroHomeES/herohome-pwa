@@ -1,9 +1,13 @@
-# AGENT.md — Diseño del agente conversacional "Hero" (WhatsApp)
+# AGENT.md — Diseño del agente conversacional "Hero"
 
-> Documento legible de cómo está modelado el agente de WhatsApp. La fuente de
-> verdad sigue siendo el código: el **system prompt** vive en `buildSystemPrompt()`
-> y las **tools** en el array `TOOLS`, ambos en `supabase/functions/whatsapp-agent/index.ts`.
-> Si cambias el comportamiento del agente, edita el código y actualiza este documento.
+> Documento legible de cómo está modelado Hero. La fuente de verdad sigue siendo
+> el código (`buildSystemPrompt()` + array `TOOLS` de cada función).
+> Si cambias el comportamiento, edita el código y actualiza este documento.
+>
+> **Hay DOS instancias de Hero**, mismo modelo (`claude-sonnet-4-6`) y misma
+> arquitectura (loop de tool-calling inline + guardarraíl anti-alucinación):
+> - **§1–§8 — Agente WhatsApp** (`whatsapp-agent`): habla con el **comprador (PC)**.
+> - **§9 — Agente PWA** (`chat-with-hero`): habla con el **propietario (CV)**.
 
 ---
 
@@ -106,3 +110,60 @@ Functions (con `Authorization: Bearer <anon>` + `x-api-key`).
 - **Capacidades (tools):** array `TOOLS` + `executeTool()` en el mismo archivo.
 - **Modelo:** constante `CLAUDE_MODEL`.
 - Tras editar: `supabase functions deploy whatsapp-agent`.
+
+---
+
+## 9. Agente PWA — Hero del propietario (`chat-with-hero`, B10)
+
+La home de la PWA es un chat con Hero que ayuda al **propietario (CV)** a gestionar
+su venta. Vive en la Edge Function `chat-with-hero` y es **hermano de `whatsapp-agent`**:
+misma estructura inline (`callClaude` / `runToolLoop` / `executeTool` / `ToolContext`),
+mismo modelo (`claude-sonnet-4-6`) y mismo guardarraíl anti-alucinación. Fuente de
+verdad: `buildSystemPrompt()` + `TOOLS` en `supabase/functions/chat-with-hero/index.ts`.
+
+### Qué es y cómo se invoca
+- El front (`HomePage` + `useChatSession`) hace `POST` con el **JWT de sesión del CV**
+  y `{ message, session_id }`. `verify_jwt=true` (por defecto, no en `config.toml`).
+- **Aislamiento (regla #1):** se decodifica el `sub` del JWT verificado → la vivienda
+  del CV (`properties.user_id = sub`). **Todas** las consultas se filtran por ese
+  `property_id`. Como las funciones usan `service_role` (saltan RLS), ese filtro por el
+  `sub` verificado es el guardia — **nunca** se confía en ids enviados por el cliente.
+- **Historial:** se lee de `pwa_chat_sessions` solo para dar contexto (validando que la
+  sesión es de ese `user_id`). El front es quien persiste el turno.
+
+### Tools
+| Tool | Qué hace | Implementación |
+|---|---|---|
+| `get_visits` | Lista visitas del CV (pendientes / próximas / pasadas) | Lectura directa (scoped) |
+| `get_availability` | Huecos libres próximos | Edge Function `get-available-slots` |
+| `get_offers` | Ofertas, contraofertas y estados (informativo) | Lectura directa (scoped) |
+| `confirm_visit` | `Pending to confirm` → `Confirmed` + aviso al PC | Edge Function `manage-visit` |
+| `cancel_visit` | Cancela (regla 24h) → `Canceled by owner` + aviso al PC | Edge Function `manage-visit` |
+| `block_slots` | Bloquea `Available` → `Not available` en un rango | Edge Function `block-visit-slots` |
+
+Convención: **lecturas directas, escrituras vía Edge Function** (igual que el agente de
+WhatsApp). `manage-visit` es **fuente única** de las acciones del propietario sobre
+visitas — la usa también el front (`useVisits`).
+
+### Reglas (resumen del system prompt)
+- **Operativo pero garantista:** ante cualquier duda de si puede/debe hacer algo, NO lo
+  hace; sugiere agendar llamada con el asesor (`https://calendar.app.google/evtp4dF7qncxggiYA`
+  o `hola@herohome.es`).
+- **Confirmación obligatoria** antes de cualquier acción que cambie datos (describe el
+  cambio y espera un "sí" explícito). Las consultas (`get_*`) no la requieren.
+- **Ofertas:** informa, pero NO actúa (aceptar/rechazar/contraofertar → sección Ofertas).
+  Consejo sobre una oferta → "decisión muy relevante" + asesor.
+- **Disponibilidad:** solo bloqueo puntual (`block_slots`). Crear huecos o cambiar la
+  plantilla semanal → sección Disponibilidad de la app (`create_slots` se descartó en v1
+  porque `generate-slots` regenera los `Available` y los borraría).
+- **Regla de 24h** en la cancelación: la aplica Hero antes de llamar a `manage-visit`
+  (así el botón del front conserva su comportamiento actual).
+- **Anti-alucinación:** no afirma haber confirmado/cancelado/bloqueado nada sin éxito real
+  de la tool en el turno (guardarraíl en código, acotado a afirmaciones en 1ª persona para
+  no chocar con descripciones de estado).
+
+### Dónde tocar
+- **Persona / reglas / límites:** `buildSystemPrompt()` en `chat-with-hero/index.ts`.
+- **Capacidades:** `TOOLS` + `executeTool()` en el mismo archivo.
+- **Acciones del propietario sobre visitas:** `manage-visit` (compartida con el front).
+- Tras editar: `supabase functions deploy chat-with-hero` (o push a `main`).

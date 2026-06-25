@@ -84,8 +84,8 @@ Se mantienen las eliminaciones de v3.0 (sin Events, sin Quotes, sin sync de prop
 | Bloque | Componente | Interim |
 |---|---|---|
 | B8 | Dashboard de Operaciones (app completa) | Table Editor de Supabase + 3-4 vistas SQL guardadas |
-| B10 | Chat Hero en la PWA | El CV contacta por teléfono/email. `chat-with-hero` se reaprovechará. |
 
+> **B10 (chat Hero en la PWA) se adelantó y completó** (25 junio, retrasando B12): `chat-with-hero` ayuda al CV a gestionar su venta (consultar visitas/ofertas/disponibilidad, confirmar/cancelar visitas, bloquear huecos). Hermano de `whatsapp-agent`. Ya no está aplazado.
 > **B11 (post-visita) se adelantó e integró en B9** (el comprador no sabría cómo ofertar sin un empujón tras la visita): `post-visit-followup` + recogida de feedback. Ya no está aplazado.
 
 ### 6. DNI DEL PC — Se captura en la oferta, no antes de la visita
@@ -130,7 +130,9 @@ El flujo RGPD del agente de WhatsApp pide consentimiento de privacidad al inicio
 | `post-visit-followup` | Cron cada 30 min | ✅ B9 (código): post-visita ~1h después (B11 integrado) |
 | `save-visit-feedback` | Tool del agente | ✅ B9 (código): feedback del PC en la visita |
 | `complete-visits` | Cron diario 23:00 (SQL inline) | ✅ Existe en setup-crons.sql |
-| `chat-with-hero` | HTTP POST desde PWA | ⏸️ Aplazada (B10, post-lanzamiento) |
+| `chat-with-hero` | HTTP POST desde PWA (JWT del CV) | ✅ B10 validado e2e (25 jun): agente Hero del propietario |
+| `manage-visit` | HTTP POST: PWA (JWT) o Hero (x-api-key) | ✅ B10: confirmar/cancelar visita del CV + notify-visit (fuente única front+Hero) |
+| `block-visit-slots` | Tool de chat-with-hero (x-api-key) | ✅ B10: bloquea Available→Not available en un rango |
 
 ### Secrets de Supabase (estado objetivo v3.1)
 - `RESEND_API_KEY` (rotar: tarea B12)
@@ -183,7 +185,8 @@ El flujo RGPD del agente de WhatsApp pide consentimiento de privacidad al inicio
 4. **Todo email transaccional sale por Resend** desde Edge Functions, con plantillas HTML embebidas en el código. Nunca por Gmail/Make.
 5. El agente de WhatsApp vive en la Edge Function `whatsapp-agent`. El webhook de Meta apunta a ella. Validar SIEMPRE la firma HMAC en POST y responder al hub.challenge en GET.
 6. **NO escribir** en `salesforce_event_id` (visit_slots) ni `salesforce_quote_id` (offers).
-7. **NO construir** B8 (Dashboard) ni B10 (chat PWA) hasta el post-lanzamiento. (B11 post-visita se adelantó: integrado en B9.)
+7. **NO construir** B8 (Dashboard) hasta el post-lanzamiento. (B10 chat PWA y B11 post-visita se adelantaron y completaron.)
+   - **Agentes de Hero:** lecturas directas a BD; **escrituras SIEMPRE vía Edge Function**. Aislamiento por el `user_id` del JWT verificado, nunca por ids del cliente. `chat-with-hero` (CV) es hermano de `whatsapp-agent` (PC) — ver `docs/AGENT.md`.
 8. El DNI del PC se solicita en `create_offer`, no antes de la visita.
 9. Parsing de emails de Idealista: con LLM y salida JSON + alerta de fallo. Nunca regex.
 10. El MCP de Supabase está en read-only: generar SQL de migraciones/crons para aplicación manual, salvo instrucción explícita en contrario.

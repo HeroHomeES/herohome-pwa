@@ -19,7 +19,7 @@ Herohome es la primera agencia inmobiliaria 100% digital de España. Propietario
 - **CV** (Cliente Vendedor): propietario con contrato. Accede a la PWA.
 - **PC** (Prospecto Comprador): interesado en comprar. Solo interactúa vía WhatsApp.
 - **PV** (Prospecto Vendedor): sin contrato. No accede a la PWA.
-- **Hero**: agente IA (Claude Sonnet 4.6, Anthropic API). Instancia activa: Agente WhatsApp (`whatsapp-agent`). El Agente PWA está aplazado (B10). Diseño documentado en `docs/AGENT.md`.
+- **Hero**: agente IA (Claude Sonnet 4.6, Anthropic API). Dos instancias en vivo: Agente WhatsApp (`whatsapp-agent`, habla con el PC) y Agente PWA (`chat-with-hero`, habla con el CV — B10, 25 junio). Diseño documentado en `docs/AGENT.md`.
 - **Agente Herohome**: persona humana para tareas no automatizables. Opera con el Table Editor de Supabase + vistas SQL (el Dashboard completo está aplazado, B8).
 
 ---
@@ -48,7 +48,8 @@ Herohome es la primera agencia inmobiliaria 100% digital de España. Propietario
 - **NO escribir** en `salesforce_event_id` (visit_slots) ni `salesforce_quote_id` (offers) — legacy nullable.
 - **Todo email sale por Resend** desde Edge Functions. Los webhooks a Make para notificaciones están ELIMINADOS (Escenarios 3-6 de Make no existen en v3.1).
 - El agente de WhatsApp vive en `whatsapp-agent` (Edge Function), NO en Make. Validar firma HMAC de Meta en cada POST.
-- **NO construir** B8 (Dashboard) ni B10 (chat Hero PWA) hasta el post-lanzamiento. B11 (post-visita) se adelantó e integró en B9.
+- **NO construir** B8 (Dashboard) hasta el post-lanzamiento. B10 (chat Hero PWA, `chat-with-hero`) construido y validado e2e (25 junio). B11 (post-visita) se adelantó e integró en B9.
+- **Acciones del agente de Hero:** lecturas directas a BD; **escrituras SIEMPRE vía Edge Function** (convención del proyecto). El aislamiento se garantiza filtrando por el `user_id` del JWT verificado, nunca por ids del cliente.
 - DNI del PC: se pide en `create_offer`, no antes de la visita.
 - Parsing de Idealista: LLM con salida JSON + alerta de fallo. Nunca regex.
 - UI en **español**. Mobile-first (375px primero).
@@ -143,7 +144,9 @@ src/
 | `post-visit-followup` | Cron cada 30 min | ✅ B9 validado e2e: post-visita ~1h después (`post_visita`); coge Confirmed + Completed |
 | `save-visit-feedback` | Tool de whatsapp-agent | ✅ B9 validado e2e: guarda outcome + feedback (Hero lo sintetiza) en la visita |
 | `complete-visits` | Cron diario 23:00 (SQL inline en setup-crons.sql) | ✅ Existe: marca Confirmed→Completed |
-| `chat-with-hero` | HTTP POST desde PWA | ⏸️ Aplazada (B10, post-lanzamiento) |
+| `chat-with-hero` | HTTP POST desde PWA (JWT del CV) | ✅ B10 validado e2e (25 jun): agente Hero del propietario (Sonnet 4.6, 6 tools) |
+| `manage-visit` | HTTP POST: PWA (JWT) o Hero (x-api-key) | ✅ B10: confirmar/cancelar visita del CV (check propiedad) + notify-visit. Fuente única (front + Hero) |
+| `block-visit-slots` | Tool de chat-with-hero (x-api-key) | ✅ B10: bloquea Available→Not available en un rango (TZ Madrid) |
 
 ### Secrets de Supabase (estado objetivo v3.1)
 - `RESEND_API_KEY` (pendiente rotación, B12)
@@ -169,7 +172,7 @@ src/
 
 ---
 
-## Estado del proyecto (actualizado 23 junio 2026 — plan v3.1)
+## Estado del proyecto (actualizado 25 junio 2026 — plan v3.1)
 
 **B0-B4 — Fundamentos, Activación CV, PWA, Edición, Slots: ✅ COMPLETADOS**
 - ✅ Bug del Magic Link (route guard + Service Worker stale) resuelto 14 junio 2026 — ver Registro de sesiones.
@@ -196,6 +199,11 @@ src/
 - B11 (post-visita) integrado aquí — ya NO está aplazado.
 - Desplegado, privacy SQL aplicada, cron registrado y ciclo completo validado e2e. Pendiente operativo: Meta a modo Live.
 
+**B10 — Chat de Hero en la PWA (asistente del CV): ✅ COMPLETADO y VALIDADO E2E (25 junio)** — adelantado (retrasando B12).
+- `chat-with-hero` (Sonnet 4.6, hermano de `whatsapp-agent`): auth JWT del CV → vivienda; 6 tools. Lectura: `get_visits`, `get_offers`, `get_availability` (reusa `get-available-slots`). Acción: `confirm_visit`/`cancel_visit` (vía `manage-visit`, regla 24h en Hero) y `block_slots` (vía `block-visit-slots`). Guardarraíl anti-alucinación acotado a afirmaciones en 1ª persona. Límites: ofertas → sección Ofertas; consejo de oferta / dudas → asesor (Google Calendar + email); disponibilidad recurrente → sección Disponibilidad.
+- Nuevas Edge Functions: `manage-visit` (doble auth, fuente única front+Hero) y `block-visit-slots`. `useVisits` del front refactorizado para pasar por `manage-visit`.
+- Validado e2e por el usuario desde la PWA. Diseño en `docs/AGENT.md` §9.
+
 **Pendiente operacional antes del lanzamiento (no código):**
 - ⚠️ **Meta → modo Live** (CRÍTICO): la app de Meta está en modo Desarrollo. Solo números de prueba autorizados reciben WhatsApp. Hasta activar "Live mode" (verificación de empresa), compradores reales no recibirán nada. Requiere: completar Business Verification en Meta + solicitar Live mode.
 - 🔄 **Make Esc. 2**: probar con el primer email real de Idealista (función validada vía curl; el trigger Gmail no se ha probado con email real).
@@ -212,12 +220,27 @@ src/
 - ✅ GitHub Action de deploy verificado + filtro `paths` añadido. Secrets limpiados.
 - ✅ CLAUDE.md y ARCHITECTURE_V3_DECISIONS.md actualizados a v3.1.
 
-**APLAZADOS POST-LANZAMIENTO: B8 (Dashboard) · B10 (chat Hero PWA)** — B11 (post-visita) se adelantó (integrado en B9)
+**APLAZADO POST-LANZAMIENTO: B8 (Dashboard)** — B10 (chat Hero PWA) y B11 (post-visita) se adelantaron y completaron
 - Única tarea B8 viva en Fase 1: crear 3-4 vistas SQL guardadas para operación manual.
 
 ---
 
 ## Registro de sesiones
+
+### 25 junio 2026 — B10: Chat de Hero en la PWA (asistente del CV) ✅ DESPLEGADO Y VALIDADO E2E
+
+La home de la PWA (`HomePage` + `useChatSession`, que ya existían) pasa a estar viva: `chat-with-hero` es un agente operativo que ayuda al **propietario** a gestionar su venta. Construido como **hermano de `whatsapp-agent`** (misma estructura inline: `callClaude`/`runToolLoop`/`executeTool`/`ToolContext`, Sonnet 4.6, guardarraíl). **Validado e2e por el usuario desde la PWA** (vivienda de prueba de Santander).
+
+- **`chat-with-hero/index.ts` (NUEVA):** auth = JWT del CV → `sub` → su vivienda; **todo filtrado por ese `property_id`** (aislamiento; `service_role` se salta RLS, así que el filtro por el `sub` verificado es el guardia). Historial: lee `pwa_chat_sessions` solo para contexto (el front sigue persistiendo). 6 tools:
+  - **Lectura (directa, como `loadBuyerContext`):** `get_visits` (pendientes/próximas/pasadas), `get_offers` (informativo). `get_availability` **reutiliza la Edge Function `get-available-slots`**.
+  - **Acción (vía Edge Function interna, anon+x-api-key):** `confirm_visit`/`cancel_visit` → `manage-visit`; `block_slots` → `block-visit-slots`. La **regla de 24h** de cancelación la aplica Hero (lee el slot y comprueba) para no cambiar el comportamiento del botón del front.
+  - **Guardarraíl anti-alucinación acotado:** solo dispara con afirmaciones en 1ª persona ("he confirmado/cancelado/bloqueado"), para no chocar con descripciones de estado legítimas ("tienes una visita confirmada").
+  - **Límites:** ofertas → "ve a la sección Ofertas"; consejo de aceptar/rechazar oferta → "decisión muy relevante" + asesor; disponibilidad recurrente (plantilla semanal) → sección Disponibilidad; garantista ante dudas → asesor (`https://calendar.app.google/evtp4dF7qncxggiYA` / `hola@herohome.es`).
+- **`manage-visit/index.ts` (NUEVA):** acción del propietario sobre una visita (`confirm`/`cancel`). **Doble auth:** JWT del CV (PWA, deriva propiedad del `sub`) o `x-api-key` (Hero, confía en el `property_id` ya verificado). Transición atómica con guarda de estado + `notify-visit` interno (avisa al PC). **Fuente única** usada por el front y por Hero.
+- **`block-visit-slots/index.ts` (NUEVA):** bloquea los `Available` de un rango (→`Not available`), TZ Madrid inline, x-api-key (como `cancel-visit-by-visitor`). `create_slots` (crear huecos) **descartado en v1**: `generate-slots` borra/regenera los `Available` futuros, así que un hueco ad-hoc se evaporaría; abrir disponibilidad se hace en la sección de Disponibilidad.
+- **Front:** `useVisits` (`confirmVisit`/`cancelVisit`/`requestReschedule`) ahora invoca `manage-visit` (`invokeEdgeFunction`) en vez de escribir directo → ownership en servidor, fuente única. La regla de 24h de *reagendar* sigue en cliente.
+- **Sin `config.toml`** (las 3 nuevas: `verify_jwt=true` por defecto; Hero/llamadas internas mandan anon Bearer + x-api-key) y **sin migraciones**.
+- **⚠️ Lío de carpetas resuelto:** esta sesión arrancó por error en una copia **obsoleta** del repo (`~/Documents/Herohome PWA`, pre-B5). El trabajo real vive en **`~/Projects/herohome-pwa`** — futuras sesiones deben arrancar ahí. (Hubo un primer intento de B10 sobre la copia vieja, descartado por no encajar con las convenciones reales; se rehízo aquí.)
 
 ### 25 junio 2026 — B9 Gestión de Ofertas + post-visita ✅ DESPLEGADO Y VALIDADO E2E
 
