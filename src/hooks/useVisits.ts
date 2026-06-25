@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
-import { callEdgeFunction } from '../lib/edgeFunctions'
+import { invokeEdgeFunction } from '../lib/edgeFunctions'
 import type { VisitSlot } from '../lib/types'
 
 export function useVisits(propertyId: string | null) {
@@ -34,25 +34,19 @@ export function useVisits(propertyId: string | null) {
 
   useEffect(() => { loadVisits() }, [loadVisits])
 
+  // Las acciones del propietario sobre visitas pasan por la Edge Function
+  // manage-visit (fuente única, verifica propiedad y avisa al PC vía notify-visit).
   const confirmVisit = async (id: string): Promise<{ error: string | null }> => {
-    const { error } = await supabase
-      .from('visit_slots')
-      .update({ status: 'Confirmed', updated_at: new Date().toISOString() })
-      .eq('id', id)
-    if (error) return { error: error.message }
+    const res = await invokeEdgeFunction('manage-visit', { visit_slot_id: id, action: 'confirm' })
+    if (!res.ok) return { error: res.error ?? 'No se pudo confirmar la visita' }
     loadVisits()
-    callEdgeFunction('notify-visit', { visit_slot_id: id, action: 'Confirmed' })
     return { error: null }
   }
 
   const cancelVisit = async (id: string): Promise<{ error: string | null }> => {
-    const { error } = await supabase
-      .from('visit_slots')
-      .update({ status: 'Canceled by owner', updated_at: new Date().toISOString() })
-      .eq('id', id)
-    if (error) return { error: error.message }
+    const res = await invokeEdgeFunction('manage-visit', { visit_slot_id: id, action: 'cancel' })
+    if (!res.ok) return { error: res.error ?? 'No se pudo cancelar la visita' }
     loadVisits()
-    callEdgeFunction('notify-visit', { visit_slot_id: id, action: 'Canceled by owner' })
     return { error: null }
   }
 
@@ -61,13 +55,9 @@ export function useVisits(propertyId: string | null) {
     if (hoursUntil < 24) {
       return { error: 'No se puede reagendar con menos de 24h de antelación' }
     }
-    const { error } = await supabase
-      .from('visit_slots')
-      .update({ status: 'Canceled by owner', updated_at: new Date().toISOString() })
-      .eq('id', visit.id)
-    if (error) return { error: error.message }
+    const res = await invokeEdgeFunction('manage-visit', { visit_slot_id: visit.id, action: 'cancel' })
+    if (!res.ok) return { error: res.error ?? 'No se pudo reagendar la visita' }
     loadVisits()
-    callEdgeFunction('notify-visit', { visit_slot_id: visit.id, action: 'Canceled by owner' })
     return { error: null }
   }
 
