@@ -137,11 +137,11 @@ src/
 | `process-idealista-lead` | HTTP POST desde Make Esc. 2 | ✅ Desplegada (B5, verify_jwt=false) — pendiente reconfigurar Make Esc. 2 |
 | `cancel-visit-by-visitor` | Tool de whatsapp-agent | ✅ Completada (B6): cancela (status → Canceled by visitor) + notifica al CV |
 | `visit-reminders` | Cron diario 07:00 UTC (x-api-key) | ✅ B7: recordatorio el día antes (WhatsApp+email PC, email CV) |
-| `manage-offer` | HTTP POST desde PWA | ✅ B9 (código, pendiente deploy+e2e): accept/deny/counter + aviso PC/equipo |
-| `create-offer` | Tool de whatsapp-agent | ✅ B9 (código): oferta del PC (importe+DNI) + verifica honorarios + avisa CV/equipo |
-| `respond-counteroffer` | Tool de whatsapp-agent | ✅ B9 (código): el PC acepta/rechaza la contraoferta del CV |
-| `post-visit-followup` | Cron cada 30 min | ✅ B9 (código): mensaje post-visita ~1h después (plantilla `post_visita`) |
-| `save-visit-feedback` | Tool de whatsapp-agent | ✅ B9 (código): guarda outcome + feedback en la visita |
+| `manage-offer` | HTTP POST desde PWA | ✅ B9 validado e2e: accept/deny/counter + aviso PC/equipo |
+| `create-offer` | Tool de whatsapp-agent | ✅ B9 validado e2e: oferta del PC (importe+DNI) + verifica honorarios + avisa CV/equipo |
+| `respond-counteroffer` | Tool de whatsapp-agent | ✅ B9 validado e2e: el PC acepta/rechaza la contraoferta del CV |
+| `post-visit-followup` | Cron cada 30 min | ✅ B9 validado e2e: post-visita ~1h después (`post_visita`); coge Confirmed + Completed |
+| `save-visit-feedback` | Tool de whatsapp-agent | ✅ B9 validado e2e: guarda outcome + feedback (Hero lo sintetiza) en la visita |
 | `complete-visits` | Cron diario 23:00 (SQL inline en setup-crons.sql) | ✅ Existe: marca Confirmed→Completed |
 | `chat-with-hero` | HTTP POST desde PWA | ⏸️ Aplazada (B10, post-lanzamiento) |
 
@@ -191,10 +191,10 @@ src/
 - ✅ Cancelación por propietario + aviso al PC (vía `notify-visit`): hecho y validado en B5.
 - ✅ Edge Function `visit-reminders` (verify_jwt=false, x-api-key): cron `0 7 * * *` → recordatorio el día antes de visitas `Confirmed` (PC: plantilla `recordatorio_visita` WhatsApp + email; CV: email). Plantilla aprobada (es_ES), cron activo. **Validado e2e**: visita sembrada para mañana → llegaron WhatsApp + email al PC y email al CV.
 - ✅ De paso, arreglado el cron `generate-daily-slots` (pasó a x-api-key; antes daba 401 con Bearer service_role).
-**B9 — Gestión de Ofertas + post-visita: ✅ CÓDIGO COMPLETO (24 junio) — pendiente deploy + validación e2e**
+**B9 — Gestión de Ofertas + post-visita: ✅ COMPLETADO y VALIDADO E2E (25 junio)**
 - `manage-offer` (CV decide), `create-offer` (PC oferta, DNI), `respond-counteroffer` (PC responde a la contraoferta), `post-visit-followup` (cron post-visita) y `save-visit-feedback`. Hero con 6 tools.
 - B11 (post-visita) integrado aquí — ya NO está aplazado.
-- Pendiente: plantilla Meta `post_visita`, deploy (push), aplicar `2026-06-24-offers-privacy.sql` (tras el deploy), registrar el cron `post-visit-followup`, y prueba e2e.
+- Desplegado, privacy SQL aplicada, cron registrado y ciclo completo validado e2e. Pendiente operativo: Meta a modo Live.
 
 **Pendiente operacional antes del lanzamiento (no código):**
 - ⚠️ **Meta → modo Live** (CRÍTICO): la app de Meta está en modo Desarrollo. Solo números de prueba autorizados reciben WhatsApp. Hasta activar "Live mode" (verificación de empresa), compradores reales no recibirán nada. Requiere: completar Business Verification en Meta + solicitar Live mode.
@@ -219,17 +219,19 @@ src/
 
 ## Registro de sesiones
 
-### 24 junio 2026 — B9 Gestión de Ofertas + post-visita ⏳ CÓDIGO COMPLETO (pendiente deploy + e2e)
+### 25 junio 2026 — B9 Gestión de Ofertas + post-visita ✅ DESPLEGADO Y VALIDADO E2E
 
-Ciclo completo de ofertas + follow-up post-visita (B11 adelantado e integrado en B9). **Construido pero aún NO desplegado ni validado e2e** (a la espera de aprobar la plantilla Meta `post_visita`). Diseño consolidado en `docs/B9-OFERTAS.md`.
+Ciclo completo de ofertas + follow-up post-visita (B11 adelantado e integrado en B9). **Desplegado y validado end-to-end el 25 junio** (todos los caminos probados por WhatsApp + PWA y verificados por MCP). Diseño consolidado en `docs/B9-OFERTAS.md`.
 
 - **Edge Functions nuevas:** `manage-offer` (CV decide desde la PWA: accept/deny/counter → aviso al PC por WhatsApp+email + email al equipo), `create-offer` (PC oferta por WhatsApp: importe + DNI, nombre/email del comprador desde su visita, verifica `buyer_fee_acknowledgement` —no bloquea si falta, lo marca en el aviso al equipo—, avisa al CV in-app+email y al equipo, `reject_offers_below` informativo sin auto-rechazo, enlaza como respuesta si hay contraoferta viva), `respond-counteroffer` (PC acepta/rechaza la contraoferta viva del CV → cierra + avisa CV/equipo), `post-visit-followup` (cron `*/30`: plantilla `post_visita` ~1h tras la visita Confirmed, idempotente vía `post_visit_sent_at`, ventana de 12h para no ser retroactivo, persiste el mensaje en la conversación), `save-visit-feedback` (guarda `post_visit_outcome` + `post_visit_feedback` raw en la visita).
 - **Hero (`whatsapp-agent`):** +3 tools (`create_offer`, `respond_to_counteroffer`, `save_visit_feedback`) → 6 en total; contexto de negociación inyectado (`loadBuyerContext`); guardarraíl generalizado (`offerActionOk`) para no "corregir" una oferta registrada con éxito. El DNI ahora se pide al ofertar (antes prohibido en visitas).
 - **Front:** `useOffers` ya no escribe directo en `offers`; invoca `manage-offer` (`invokeEdgeFunction`). `select` explícito sin `buyer_dni`/`buyer_email`. `Offer` sin `salesforce_quote_id`.
 - **SQL (manual):** `2026-06-24-offers.sql` ✅ aplicada (+buyer_dni/buyer_email, `salesforce_quote_id` nullable, +`post_visit_*` en visit_slots). `2026-06-24-offers-privacy.sql` ⏳ pendiente (GRANT por columna oculta DNI/email al CV + REVOKE escritura → todo pasa por las Edge Functions). Cron 5 `post-visit-followup` en `setup-crons.sql`.
 - **Plantillas Meta:** `oferta_aceptada`/`oferta_rechazada`/`contraoferta` aprobadas; `post_visita` ({{1}} nombre, {{2}} dirección) en revisión.
-- **Decisiones:** CV avisado in-app + email en cada oferta; honorarios ausentes no bloquean (aviso al equipo); feedback "no me interesa" se guarda raw.
-- **Pendiente:** aprobar `post_visita`; deploy (push → Vercel + Action); aplicar privacy SQL **tras** el deploy; registrar el cron; **prueba e2e** del ciclo oferta↔contraoferta y del post-visita.
+- **Decisiones:** CV avisado in-app + email en cada oferta; honorarios ausentes no bloquean (aviso al equipo); el feedback "no me interesa" lo **sintetiza Hero** (decisión revisada en pruebas: para explicaciones largas se prefiere un resumen, no el texto literal).
+- **Validación e2e (25 junio, verificada por MCP):** `create_offer`, `manage-offer` (accept/deny/counter), `respond_to_counteroffer` (accept/reject), `create_offer` enlazada en negociación (cadena 850k→870k→860k→865k aceptada), post-visita + `save_visit_feedback`, y privacidad (el CV no lee DNI/email; no escribe `offers`).
+- **Fixes durante las pruebas:** `post-visit-followup` ahora coge también visitas `Completed` (no solo `Confirmed`: `complete-visits` a las 23:00 puede marcarlas antes del follow-up de tarde-noche). El cron `post-visit-followup` debe llevar la `HEROHOME_API_KEY` real (con el placeholder daba 401) — registrado reutilizando el comando de `visit-reminders`.
+- **Pendiente (no código):** Meta → modo Live (para que compradores reales reciban WhatsApp); limpieza de datos de prueba.
 
 ### 24 junio 2026 — Gate de honorarios del comprador (B13 → integrado en B5) ✅ VALIDADO E2E
 

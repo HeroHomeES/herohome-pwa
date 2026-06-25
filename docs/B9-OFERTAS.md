@@ -1,6 +1,6 @@
 # B9 — Gestión de Ofertas (+ post-visita) — Guion de construcción
 
-> **Estado:** código completo (piezas 1-5), pendiente deploy + validación e2e (24 jun 2026).
+> **Estado:** ✅ desplegado y validado end-to-end (25 jun 2026).
 > **Fuente:** sesión de diseño previa al desarrollo. Consolidado para evitar bandazos.
 > **Arquitectura:** v3.1 — leer `ARCHITECTURE_V3_DECISIONS (1).md` y `CLAUDE.md`. Este doc no contradice nada de v3.1; lo aterriza para B9.
 
@@ -52,7 +52,7 @@ PC responde (texto libre) → whatsapp-agent (Hero)
 
 - **Sin botones.** El PC responde libre; Hero clasifica intención.
 - **Sin ventana horaria** (no habrá visitas de madrugada; si las hubiera, el PC recibe un WhatsApp que espera).
-- **Feedback = raw** (literal del visitante). Nada de resumen LLM en v1. Si en el futuro se quiere categorizar, se hace sobre el texto ya guardado.
+- **Feedback**: Hero captura el motivo y puede **sintetizarlo** (decisión revisada en pruebas: para explicaciones largas se prefiere un resumen, no el texto literal). Se guarda en `visit_slots.post_visit_feedback`.
 
 ### 2.B — create-offer (el PC oferta)
 
@@ -229,5 +229,5 @@ Plantillas HTML nuevas en `supabase/functions/_shared/email-templates/` (brandin
 - `reject_offers_below`: **sin auto-rechazo**; Hero avisa pero registra.
 - `manage-offer`: **opción 1** (función hace UPDATE + aviso; el front deja de escribir directo).
 - Contraoferta: **ciclo completo multi-vuelta** PC↔CV.
-- Feedback "no me interesa": se recoge, **raw**, en `visit_slots` (`post_visit_outcome` + `post_visit_feedback`).
+- Feedback "no me interesa": se recoge en `visit_slots` (`post_visit_outcome` + `post_visit_feedback`); Hero **sintetiza** el motivo (no necesariamente literal).
 - Email al equipo (hola@herohome.es) en **cada evento** de oferta, como interim del dashboard (B8 sigue aplazado).
