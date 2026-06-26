@@ -76,6 +76,10 @@ export interface Property {
   electronic_certificate: 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G' | 'En trámite' | null
   sales_price: number | null
   reject_offers_below: number | null
+  owner_fee_percent: number | null
+  owner_fee: number | null
+  buyer_fee_percent: number | null
+  buyer_fee: number | null
   ref_catastral: string | null
   description: string | null
   status: 'On Sale' | 'Sold' | 'Contract cancelled' | null

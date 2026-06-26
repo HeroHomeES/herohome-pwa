@@ -28,10 +28,27 @@ function formatFeePercent(pct: number): string {
   return Number.isInteger(pct) ? String(pct) : String(pct).replace(".", ",")
 }
 
-function buildFeeMessage(pct: number): string {
+// Importe en euros con formato español ("3.000 €").
+function formatEur(amount: number): string {
+  return new Intl.NumberFormat("es-ES", {
+    style: "currency",
+    currency: "EUR",
+    maximumFractionDigits: 0,
+  }).format(amount)
+}
+
+// salesPrice se pasa para mostrar un € ORIENTATIVO. Es opcional: si no se conoce
+// (o en gates abiertos antes de añadir este dato a agent_state) el mensaje sale
+// solo con el %, idéntico al texto histórico → consent_text retrocompatible.
+function buildFeeMessage(pct: number, salesPrice: number | null = null): string {
+  const amount = pct > 0 && salesPrice && salesPrice > 0 ? Math.round((salesPrice * pct) / 100) : null
+  const estimate =
+    amount != null
+      ? ` Sobre el precio actual de ${formatEur(salesPrice!)}, supondría aproximadamente ${formatEur(amount)}; el importe final se calculará sobre el precio que finalmente se acuerde con el vendedor.`
+      : ""
   return `Antes de confirmar tu visita, necesito que conozcas las condiciones del servicio:
 
-Herohome cobra una comisión del ${formatFeePercent(pct)}% sobre el precio de venta al comprador. Esta comisión se devenga si formalizas una oferta de compra sobre esta propiedad que es aceptada por el vendedor.
+Herohome cobra una comisión del ${formatFeePercent(pct)}% sobre el precio de venta al comprador. Esta comisión se devenga si formalizas una oferta de compra sobre esta propiedad que es aceptada por el vendedor.${estimate}
 
 Puedes consultar las condiciones completas en: herohome.es/honorarios
 
@@ -111,6 +128,7 @@ interface FeeGate {
   visitorLastName: string
   visitorEmail: string
   feePercent: number
+  salesPrice: number | null
 }
 
 interface ToolContext {
@@ -119,6 +137,8 @@ interface ToolContext {
   supabase: ReturnType<typeof createClient>
   // % de comisión del comprador de la vivienda (1 = 1%). 0 = sin gate.
   buyerFeePercent: number
+  // Precio de venta de la vivienda (para el € orientativo del mensaje de honorarios).
+  salesPrice: number | null
   // Cuando request_visit reúne todos los datos, en vez de reservar marca aquí el
   // gate de honorarios; el handler lo detecta tras el loop y envía el mensaje.
   feeGate: FeeGate | null
@@ -133,6 +153,9 @@ type AgentState = {
   visitor_last_name: string
   visitor_email: string
   fee_percent: number
+  // Precio de venta congelado al abrir el gate: el € del consent_text se reconstruye
+  // con este valor (no se recalcula desde la vivienda) para que coincida verbatim.
+  sales_price?: number | null
   retries: number
   gate_sent_at: string
 } | null
@@ -373,6 +396,7 @@ async function executeTool(
       visitorLastName: visitor_last_name,
       visitorEmail: visitor_email,
       feePercent: context.buyerFeePercent,
+      salesPrice: context.salesPrice,
     }
     return {
       fee_gate: "presented",
@@ -548,7 +572,7 @@ async function enterFeeGate(
   feeGate: FeeGate,
   userText: string
 ): Promise<void> {
-  const feeMessage = buildFeeMessage(feeGate.feePercent)
+  const feeMessage = buildFeeMessage(feeGate.feePercent, feeGate.salesPrice)
   await sendWhatsAppText({ to: waPhoneNumber, body: feeMessage })
   await setAgentState(supabase, waPhoneNumber, propertyId, {
     state: "awaiting_fee_consent",
@@ -558,6 +582,7 @@ async function enterFeeGate(
     visitor_last_name: feeGate.visitorLastName,
     visitor_email: feeGate.visitorEmail,
     fee_percent: feeGate.feePercent,
+    sales_price: feeGate.salesPrice,
     retries: 0,
     gate_sent_at: new Date().toISOString(),
   })
@@ -802,7 +827,7 @@ Deno.serve(async (req: Request) => {
         // Reconstruimos el texto EXACTO mostrado a partir del % guardado al abrir
         // el gate (no se recalcula desde la vivienda: garantiza que lo registrado
         // coincide con lo que vio el comprador).
-        const consentText = buildFeeMessage(agentState.fee_percent)
+        const consentText = buildFeeMessage(agentState.fee_percent, agentState.sales_price ?? null)
         const consentRes = await recordFeeConsent(supabase, {
           waPhoneNumber,
           propertyId: agentState.pending_property_id,
@@ -863,7 +888,7 @@ Deno.serve(async (req: Request) => {
 
       // --- AMBIGUO: 1 reintento; al segundo mensaje ambiguo, tratar como rechazo ---
       if ((agentState.retries ?? 0) < 1) {
-        const feeMessage = buildFeeMessage(agentState.fee_percent)
+        const feeMessage = buildFeeMessage(agentState.fee_percent, agentState.sales_price ?? null)
         await sendWhatsAppText({ to: waPhoneNumber, body: feeMessage })
         await setAgentState(supabase, waPhoneNumber, propertyId, {
           ...agentState,
@@ -892,6 +917,8 @@ Deno.serve(async (req: Request) => {
     // numeric de Postgres puede llegar como string vía supabase-js → coercionar.
     const buyerFeePercent =
       property?.buyer_fee_percent != null ? Number(property.buyer_fee_percent) : DEFAULT_BUYER_FEE_PERCENT
+    // numeric de Postgres puede llegar como string → coercionar (para el € orientativo).
+    const salesPrice = property?.sales_price != null ? Number(property.sales_price) : null
 
     const history: { role: string; content: string }[] = Array.isArray(conversation?.messages)
       ? (conversation!.messages as { role: string; content: string }[])
@@ -912,7 +939,7 @@ Deno.serve(async (req: Request) => {
 
     const buyerContext = await loadBuyerContext(supabase, propertyId, waPhoneNumber)
     const system = buildSystemPrompt(property, buyerContext)
-    const toolContext: ToolContext = { propertyId, waPhoneNumber, supabase, feeGate: null, buyerFeePercent }
+    const toolContext: ToolContext = { propertyId, waPhoneNumber, supabase, feeGate: null, buyerFeePercent, salesPrice }
 
     let { finalText, requestVisitOk, offerActionOk } = await runToolLoop(system, anthropicMessages, toolContext)
 

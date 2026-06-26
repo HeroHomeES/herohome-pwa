@@ -117,6 +117,18 @@ function SelectField({ value, onChange, options, placeholder }: {
   )
 }
 
+// Valor de solo lectura (honorarios: vienen de Salesforce o los calcula la BD)
+const readOnlyCls = 'w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-[#666666] bg-gray-50'
+
+function ReadOnlyValue({ children }: { children: React.ReactNode }) {
+  return <div className={readOnlyCls}>{children}</div>
+}
+
+const eur = (v: number | null) =>
+  v != null ? new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(v) : '—'
+const pct = (v: number | null) =>
+  v != null ? `${new Intl.NumberFormat('es-ES', { maximumFractionDigits: 2 }).format(v)}%` : '—'
+
 function ToggleField({ label, checked, onChange }: { label: string; checked: boolean | null; onChange: (v: boolean) => void }) {
   return (
     <div className="flex flex-col gap-1">
@@ -268,6 +280,12 @@ function PropertyForm({ property, saveProperty }: {
         </Field>
         <Field label="Gastos de comunidad (€/mes)">
           <input type="number" min={0} className={inputCls} value={draft.community_fee} onChange={(e) => set('community_fee', e.target.value)} placeholder="150" />
+        </Field>
+        <Field label="Honorarios Herohome (%)">
+          <ReadOnlyValue>{pct(property.owner_fee_percent)}</ReadOnlyValue>
+        </Field>
+        <Field label="Honorarios Herohome (€)">
+          <ReadOnlyValue>{eur(property.owner_fee)}</ReadOnlyValue>
         </Field>
       </FormSection>
 

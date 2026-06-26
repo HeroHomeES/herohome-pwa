@@ -34,6 +34,10 @@ interface CreateUserAndPropertyBody {
     usefulSurface?: number
     salesPrice?: number
     status?: string
+    ownerFeePercent?: number | string
+    owner_fee_percent?: number | string
+    buyerFeePercent?: number | string
+    buyer_fee_percent?: number | string
   }
 }
 
@@ -69,6 +73,8 @@ Deno.serve(async (req: Request) => {
   const lastName = user?.lastName ?? user?.last_name
   const salesforceContactId = user?.salesforceContactId ?? user?.contactId
   const usefulSurfaceArea = property?.usefulSurfaceArea ?? property?.usefulSurface
+  const ownerFeePercent = property?.ownerFeePercent ?? property?.owner_fee_percent
+  const buyerFeePercent = property?.buyerFeePercent ?? property?.buyer_fee_percent
 
   if (!salesforceAccountId || !user?.email || !firstName || !lastName) {
     return new Response(
@@ -149,6 +155,11 @@ Deno.serve(async (req: Request) => {
     useful_surface_area: usefulSurfaceArea ?? null,
     sales_price: property?.salesPrice ?? null,
     status: property?.status ?? "On Sale",
+    // Solo se incluyen si Salesforce los envía: así no se pisa el valor existente
+    // (ni el default de BD) con null en re-sincronizaciones. owner_fee/buyer_fee son
+    // columnas GENERATED: NUNCA se escriben aquí (la BD las calcula).
+    ...(ownerFeePercent != null ? { owner_fee_percent: ownerFeePercent } : {}),
+    ...(buyerFeePercent != null ? { buyer_fee_percent: buyerFeePercent } : {}),
     updated_at: new Date().toISOString(),
   }, { onConflict: "salesforce_account_id" })
 
