@@ -38,6 +38,20 @@ interface CreateUserAndPropertyBody {
     owner_fee_percent?: number | string
     buyerFeePercent?: number | string
     buyer_fee_percent?: number | string
+    description?: string
+    age?: number | string
+    communityFee?: number | string
+    condition?: string
+    electronicCertificate?: string
+    external?: boolean
+    garageSpace?: string
+    heatingType?: string
+    elevator?: boolean
+    orientation?: string
+    refCatastral?: string
+    registroPropiedad?: number | string
+    rejectOffersBelow?: number | string
+    floor?: number | string
   }
 }
 
@@ -155,6 +169,20 @@ Deno.serve(async (req: Request) => {
     useful_surface_area: usefulSurfaceArea ?? null,
     sales_price: property?.salesPrice ?? null,
     status: property?.status ?? "On Sale",
+    description: property?.description ?? null,
+    age: property?.age ?? null,
+    community_fee: property?.communityFee ?? null,
+    condition: property?.condition ?? null,
+    electronic_certificate: property?.electronicCertificate ?? null,
+    is_exterior: property?.external ?? null,
+    garage_space: property?.garageSpace ?? null,
+    heating_type: property?.heatingType ?? null,
+    has_elevator: property?.elevator ?? null,
+    orientation: property?.orientation ?? null,
+    ref_catastral: property?.refCatastral ?? null,
+    registro_propiedad: property?.registroPropiedad ?? null,
+    reject_offers_below: property?.rejectOffersBelow ?? null,
+    floor: property?.floor ?? null,
     // Solo se incluyen si Salesforce los envía: así no se pisa el valor existente
     // (ni el default de BD) con null en re-sincronizaciones. owner_fee/buyer_fee son
     // columnas GENERATED: NUNCA se escriben aquí (la BD las calcula).
