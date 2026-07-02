@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { sendWhatsAppTemplate } from "../_shared/send-whatsapp.ts"
+import { alertTeam } from "../_shared/alert.ts"
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
@@ -29,7 +30,7 @@ function postVisitText(firstName: string, address: string): string {
 
 // Cron (cada 30 min): envía un mensaje post-visita ~1h después de cada visita
 // para invitar a ofertar o recoger feedback. Idempotente vía post_visit_sent_at.
-Deno.serve(async (req: Request) => {
+async function handle(req: Request): Promise<Response> {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders })
   }
@@ -60,10 +61,16 @@ Deno.serve(async (req: Request) => {
     .is("post_visit_sent_at", null)
 
   if (error) {
+    await alertTeam({
+      source: "post-visit-followup",
+      subject: "Fallo al consultar las visitas para el follow-up",
+      detail: error.message,
+    })
     return jsonResponse({ error: error.message }, 500)
   }
 
   let sent = 0
+  const sendFailures: string[] = []
 
   for (const v of visits ?? []) {
     if (!v.visitor_phone) continue
@@ -86,6 +93,7 @@ Deno.serve(async (req: Request) => {
     if (!wa.success) {
       // No marcamos el flag: se reintenta en la siguiente pasada del cron.
       console.error(`[post-visit-followup] WhatsApp falló para ${v.visitor_phone}: ${wa.error}`)
+      sendFailures.push(`WhatsApp ${v.visitor_phone} (visita ${v.id}): ${wa.error}`)
       continue
     }
 
@@ -119,5 +127,26 @@ Deno.serve(async (req: Request) => {
     sent++
   }
 
-  return jsonResponse({ success: true, candidates: visits?.length ?? 0, sent }, 200)
+  if (sendFailures.length > 0) {
+    await alertTeam({
+      source: "post-visit-followup",
+      subject: `${sendFailures.length} envío(s) post-visita fallaron`,
+      detail: sendFailures.join("\n"),
+    })
+  }
+
+  return jsonResponse(
+    { success: true, candidates: visits?.length ?? 0, sent, send_failures: sendFailures.length },
+    200
+  )
+}
+
+Deno.serve(async (req: Request): Promise<Response> => {
+  try {
+    return await handle(req)
+  } catch (e) {
+    const detail = e instanceof Error ? (e.stack ?? e.message) : String(e)
+    await alertTeam({ source: "post-visit-followup", subject: "Excepción no controlada en el cron", detail })
+    return jsonResponse({ error: "internal error" }, 500)
+  }
 })

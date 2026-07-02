@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import { alertTeam } from "../_shared/alert.ts"
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
@@ -261,6 +262,7 @@ Deno.serve(async (req: Request) => {
   let totalCreated = 0
   let totalDeleted = 0
   let propertiesProcessed = 0
+  const propertyFailures: string[] = []
 
   try {
     if (propertyId) {
@@ -323,15 +325,30 @@ Deno.serve(async (req: Request) => {
         } catch (err) {
           // Log and continue — one failing property must not block the rest
           console.error(`[generate-slots] Error en property ${row.property_id}:`, err)
+          propertyFailures.push(`property ${row.property_id}: ${err instanceof Error ? err.message : String(err)}`)
         }
       }
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     console.error("[generate-slots] Error fatal:", message)
+    await alertTeam({
+      source: "generate-slots",
+      subject: `Error fatal (${isCron ? "cron" : "PWA"})`,
+      detail: err instanceof Error ? (err.stack ?? message) : message,
+    })
     return new Response(JSON.stringify({ error: message }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
+    })
+  }
+
+  // En modo cron, avisar si alguna vivienda falló al generar slots (no bloquea al resto).
+  if (isCron && propertyFailures.length > 0) {
+    await alertTeam({
+      source: "generate-slots",
+      subject: `${propertyFailures.length} vivienda(s) fallaron al generar slots`,
+      detail: propertyFailures.join("\n"),
     })
   }
 
@@ -341,6 +358,7 @@ Deno.serve(async (req: Request) => {
       properties_processed: propertiesProcessed,
       slots_created: totalCreated,
       slots_deleted: totalDeleted,
+      property_failures: propertyFailures.length,
     }),
     { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
   )

@@ -2,6 +2,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { sendEmail } from "../_shared/send-email.ts"
 import { sendWhatsAppTemplate } from "../_shared/send-whatsapp.ts"
 import { visitReminderPcHtml, visitReminderCvHtml } from "../_shared/email-templates/visit-status.ts"
+import { alertTeam } from "../_shared/alert.ts"
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
@@ -51,7 +52,7 @@ function formatMadrid(iso: string): string {
   return `${fecha} a las ${hora}`
 }
 
-Deno.serve(async (req: Request) => {
+async function handle(req: Request): Promise<Response> {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders })
   }
@@ -81,6 +82,11 @@ Deno.serve(async (req: Request) => {
     .order("start_time", { ascending: true })
 
   if (error) {
+    await alertTeam({
+      source: "visit-reminders",
+      subject: "Fallo al consultar las visitas Confirmed",
+      detail: error.message,
+    })
     return jsonResponse({ error: error.message }, 500)
   }
 
@@ -88,6 +94,7 @@ Deno.serve(async (req: Request) => {
 
   let remindersPc = 0
   let remindersCv = 0
+  const sendFailures: string[] = []
 
   for (const v of tomorrowVisits) {
     const { data: property } = await supabase
@@ -111,6 +118,7 @@ Deno.serve(async (req: Request) => {
       })
       if (!wa.success) {
         console.error(`[visit-reminders] WhatsApp recordatorio falló para ${v.visitor_phone}: ${wa.error}`)
+        sendFailures.push(`WhatsApp PC ${v.visitor_phone} (visita ${v.id}): ${wa.error}`)
       }
     }
     if (v.visitor_email) {
@@ -119,7 +127,10 @@ Deno.serve(async (req: Request) => {
         subject: "Recordatorio de tu visita de mañana",
         html: visitReminderPcHtml({ visitorName: firstName, propertyAddress: address, dateTime }),
       })
-      if (!em.success) console.error(`[visit-reminders] Email PC falló: ${em.error}`)
+      if (!em.success) {
+        console.error(`[visit-reminders] Email PC falló: ${em.error}`)
+        sendFailures.push(`Email PC ${v.visitor_email} (visita ${v.id}): ${em.error}`)
+      }
     }
     remindersPc++
 
@@ -142,10 +153,20 @@ Deno.serve(async (req: Request) => {
             dateTime,
           }),
         })
-        if (!em.success) console.error(`[visit-reminders] Email CV falló: ${em.error}`)
-        else remindersCv++
+        if (!em.success) {
+          console.error(`[visit-reminders] Email CV falló: ${em.error}`)
+          sendFailures.push(`Email CV ${owner.email} (visita ${v.id}): ${em.error}`)
+        } else remindersCv++
       }
     }
+  }
+
+  if (sendFailures.length > 0) {
+    await alertTeam({
+      source: "visit-reminders",
+      subject: `${sendFailures.length} envío(s) de recordatorio fallaron`,
+      detail: sendFailures.join("\n"),
+    })
   }
 
   return jsonResponse(
@@ -155,7 +176,18 @@ Deno.serve(async (req: Request) => {
       visits_found: tomorrowVisits.length,
       reminders_pc: remindersPc,
       reminders_cv: remindersCv,
+      send_failures: sendFailures.length,
     },
     200
   )
+}
+
+Deno.serve(async (req: Request): Promise<Response> => {
+  try {
+    return await handle(req)
+  } catch (e) {
+    const detail = e instanceof Error ? (e.stack ?? e.message) : String(e)
+    await alertTeam({ source: "visit-reminders", subject: "Excepción no controlada en el cron", detail })
+    return jsonResponse({ error: "internal error" }, 500)
+  }
 })
