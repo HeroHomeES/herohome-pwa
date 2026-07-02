@@ -209,7 +209,7 @@ src/
 - 🔄 **Make Esc. 2**: probar con el primer email real de Idealista (función validada vía curl; el trigger Gmail no se ha probado con email real).
 - 🧹 **Limpieza opcional** (no bloqueante): (a) borrar datos de prueba (visitas/conversaciones de Roberto y Carlos en vivienda Santander + slot "mañana" del test de B7); (b) eliminar secret `MAKE_WEBHOOK_NOTIFY_VISIT` (obsoleto en v3.1); (c) desactivar/eliminar escenario Make `whatsapp-herohome-inbound` (obsoleto v3.0); (d) eliminar secret `OPENAI_API_KEY` (nunca se usó en v3.1).
 
-**B12 — QA y Lanzamiento: 🔄 EN CURSO** — ✅ higiene de secretos (Resend rotada, obsoletos borrados, `.env` fuera de git — 2 jul); ⬜ pendiente: RLS, pen test incl. HMAC, monitoring
+**B12 — QA y Lanzamiento: 🔄 EN CURSO** — ✅ higiene de secretos (Resend rotada, obsoletos borrados, `.env` fuera de git — 2 jul); ✅ revisión RLS (sólida; hardening aplicado 2 jul); ⬜ pendiente: pen test incl. HMAC, monitoring
 
 **B13 — Negocio y Legal: 🔄 EN CURSO (paralelo, no técnico)**
 - Revisión pricing "primera venta gratis" · contrato reconocimiento honorarios comprador (abogado) · momento de firma · plan de captación.
@@ -236,6 +236,8 @@ src/
 - **Revisión del resto de tokens:** sin exposición conocida → WhatsApp token, `META_APP_SECRET`, `ANTHROPIC_API_KEY` **NO se rotan** (rotarlos sin exposición es disruptivo y no aporta). `HEROHOME_API_KEY` ya se rotó el 21 jun.
 - **Confirmado:** en el repo **no hay secretos hardcodeados** — todos viven solo en los secrets de Edge Functions (`Deno.env.get`).
 - ⚠️ **OJO:** la "secret key" `sb_secret_…` que aparece en Project Settings → API Keys es la clave del **propio Supabase** (nuevo formato de service_role), NO donde va la Resend key. No tocarla.
+
+**Revisión de RLS (tarea de B12) — HECHA (sólida):** RLS activado en las 9 tablas; políticas filtran por `auth.uid()`/pertenencia a la vivienda; `consents` y `whatsapp_conversations` con política DENY total a anon/authenticated (solo service_role). **RGPD:** `offers` tiene ACL por columna que **oculta `buyer_dni` y `buyer_email` al CV** (control de B9 verificado en producción); `buyer_name`/`buyer_phone` SÍ los ve el CV (decisión de negocio, revisable a futuro). Hardening aplicado (`supabase/sql/2026-07-02-rls-hardening.sql`): 14 políticas de acceso pasadas de rol `public`→`authenticated` (mismo efecto, más explícito); `REVOKE EXECUTE` de `rls_auto_enable()` (event trigger, no debía ser RPC) → Security Advisor bajó de 4 warnings a 2. Los 2 restantes (`check_user_exists_by_email` ejecutable por anon/authenticated) se **aceptan**: los necesita el login "no eres cliente" (trade-off: permite enumeración de emails, riesgo bajo).
 
 **Wipe de datos de producción (previo a onboarding real):** el usuario despliega el código de Salesforce a producción y quiere sincronizar **solo viviendas reales**. Se **vaciaron todos los datos de prueba** (TRUNCATE de las 9 tablas + `DELETE FROM auth.users`): properties, users, visit_slots, offers, consents, notifications, whatsapp_conversations, pwa_chat_sessions, availability_config, y los 17 usuarios de Auth (incluidos 5 emails reales que eran cuentas de prueba del usuario/familiares). **Estructura, columnas generadas, RLS, funciones, secretos y crons INTACTOS** (solo se borraron filas). Verificado por MCP: todas las tablas a 0. **BD lista para producción real.**
 
