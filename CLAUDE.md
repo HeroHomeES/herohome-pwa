@@ -149,15 +149,15 @@ src/
 | `block-visit-slots` | Tool de chat-with-hero (x-api-key) | ✅ B10: bloquea Available→Not available en un rango (TZ Madrid) |
 
 ### Secrets de Supabase (estado objetivo v3.1)
-- `RESEND_API_KEY` (pendiente rotación, B12)
+- `RESEND_API_KEY` ✅ ROTADA Y VALIDADA (2 jul 2026; la key vieja expuesta en mayo, borrada)
 - `PWA_BASE_URL` (`https://app.herohome.es`)
 - `ANTHROPIC_API_KEY` — NUEVO (whatsapp-agent → `claude-sonnet-4-6`; process-idealista-lead → `claude-haiku-4-5`)
 - `META_APP_SECRET` — NUEVO (validación HMAC)
 - `WHATSAPP_VERIFY_TOKEN` — NUEVO (verificación GET del webhook de Meta, string propio)
 - `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID` — envío Cloud API
 - `WHATSAPP_WELCOME_TEMPLATE_NAME` — NUEVO (plantilla de bienvenida aprobada en Meta; por defecto `bienvenida_pc`)
-- ~~`MAKE_WEBHOOK_NOTIFY_VISIT`~~ — ELIMINAR (notify-visit v3.1 ya no lo usa)
-- ~~`OPENAI_API_KEY`~~ — ELIMINAR (nunca usado en v3.1)
+- ~~`MAKE_WEBHOOK_NOTIFY_VISIT`~~ — ✅ ELIMINADO (2 jul 2026)
+- ~~`OPENAI_API_KEY`~~ — ✅ ELIMINADO (2 jul 2026)
 
 ---
 
@@ -209,7 +209,7 @@ src/
 - 🔄 **Make Esc. 2**: probar con el primer email real de Idealista (función validada vía curl; el trigger Gmail no se ha probado con email real).
 - 🧹 **Limpieza opcional** (no bloqueante): (a) borrar datos de prueba (visitas/conversaciones de Roberto y Carlos en vivienda Santander + slot "mañana" del test de B7); (b) eliminar secret `MAKE_WEBHOOK_NOTIFY_VISIT` (obsoleto en v3.1); (c) desactivar/eliminar escenario Make `whatsapp-herohome-inbound` (obsoleto v3.0); (d) eliminar secret `OPENAI_API_KEY` (nunca se usó en v3.1).
 
-**B12 — QA y Lanzamiento: ⬜ PENDIENTE** (RLS, rotación de secrets, pen test incl. HMAC, monitoring)
+**B12 — QA y Lanzamiento: 🔄 EN CURSO** — ✅ higiene de secretos (Resend rotada, obsoletos borrados, `.env` fuera de git — 2 jul); ⬜ pendiente: RLS, pen test incl. HMAC, monitoring
 
 **B13 — Negocio y Legal: 🔄 EN CURSO (paralelo, no técnico)**
 - Revisión pricing "primera venta gratis" · contrato reconocimiento honorarios comprador (abogado) · momento de firma · plan de captación.
@@ -226,6 +226,18 @@ src/
 ---
 
 ## Registro de sesiones
+
+### 2 julio 2026 — Higiene de secretos (B12) + wipe de datos de producción ✅
+
+**Higiene de secretos (tarea de B12) — COMPLETADA:**
+- **`RESEND_API_KEY` rotada y validada e2e.** Motivo: estuvo expuesta en un chat en mayo. Key nueva creada en Resend, secret actualizado en Supabase (Edge Functions → Secrets), **redeploy** de las funciones (para forzar recarga del secret), envío de prueba recibido → **key vieja borrada** en Resend. Verificado que el tráfico migró (nueva "used 1 min", vieja quedó estancada antes de borrarla). Riesgo evaluado: MEDIO (key send-only sobre dominio verificado → phishing/deliverability; no da acceso a BD). Recordatorio: Resend lo usan **9 funciones** (create-user, send-welcome-email, notify-visit, visit-reminders, cancel-visit-by-visitor, create-offer, manage-offer, respond-counteroffer, process-idealista-lead) — un único secret para todas.
+- **Secretos obsoletos borrados:** `MAKE_WEBHOOK_NOTIFY_VISIT` y `OPENAI_API_KEY` (confirmado por grep que ningún código los usa).
+- **`.env` destrackeado** de git (`git rm --cached .env`; sigue en local, ya estaba en `.gitignore`). Solo contenía `VITE_SUPABASE_URL` + anon key (pública por diseño); queda en el historial de git pero es inocuo. `.env.example` se mantiene.
+- **Revisión del resto de tokens:** sin exposición conocida → WhatsApp token, `META_APP_SECRET`, `ANTHROPIC_API_KEY` **NO se rotan** (rotarlos sin exposición es disruptivo y no aporta). `HEROHOME_API_KEY` ya se rotó el 21 jun.
+- **Confirmado:** en el repo **no hay secretos hardcodeados** — todos viven solo en los secrets de Edge Functions (`Deno.env.get`).
+- ⚠️ **OJO:** la "secret key" `sb_secret_…` que aparece en Project Settings → API Keys es la clave del **propio Supabase** (nuevo formato de service_role), NO donde va la Resend key. No tocarla.
+
+**Wipe de datos de producción (previo a onboarding real):** el usuario despliega el código de Salesforce a producción y quiere sincronizar **solo viviendas reales**. Se **vaciaron todos los datos de prueba** (TRUNCATE de las 9 tablas + `DELETE FROM auth.users`): properties, users, visit_slots, offers, consents, notifications, whatsapp_conversations, pwa_chat_sessions, availability_config, y los 17 usuarios de Auth (incluidos 5 emails reales que eran cuentas de prueba del usuario/familiares). **Estructura, columnas generadas, RLS, funciones, secretos y crons INTACTOS** (solo se borraron filas). Verificado por MCP: todas las tablas a 0. **BD lista para producción real.**
 
 ### 26 junio 2026 — Honorarios: % del propietario + importes en € + € en el gate ✅ DESPLEGADO Y VALIDADO E2E
 
