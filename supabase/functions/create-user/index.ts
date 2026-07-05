@@ -1,4 +1,4 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.110.0"
 import { welcomeEmailHtml } from "../_shared/email-templates/welcome.ts"
 import { sendEmail } from "../_shared/send-email.ts"
 

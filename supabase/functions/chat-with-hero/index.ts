@@ -1,5 +1,6 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.110.0"
 import { alertTeam } from "../_shared/alert.ts"
+import { ACTION_CLAIM_REGEX } from "../_shared/guardrails.ts"
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
@@ -373,11 +374,8 @@ async function runToolLoop(
   return { finalText, actionOk }
 }
 
-// Afirmaciones en primera persona de acción completada ("he confirmado",
-// "la he cancelado", "queda(n) bloqueada(s)"). Evita falsos positivos con
-// descripciones de estado tipo "tienes una visita confirmada".
-const ACTION_CLAIM_REGEX =
-  /\b(?:(?:ya\s+)?(?:la|lo|las|los)\s+he|(?:ya\s+)?he|queda[ns]?)\s+(?:confirmad|cancelad|bloquead|anulad)[oa]s?\b/i
+// El guardarraíl anti-alucinación (ACTION_CLAIM_REGEX) se importa de
+// _shared/guardrails.ts, con tests.
 
 // --- Handler ---
 

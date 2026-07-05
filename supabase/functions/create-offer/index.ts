@@ -1,4 +1,4 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.110.0"
 import { sendEmail } from "../_shared/send-email.ts"
 import {
   teamOfferAlertHtml,
@@ -77,6 +77,26 @@ Deno.serve(async (req: Request) => {
 
   if (propError || !property) {
     return jsonResponse({ error: `Vivienda no encontrada: ${propError?.message ?? ""}` }, 404)
+  }
+
+  // 1b. Vivienda ya apalabrada: si existe una oferta aceptada, no se admiten
+  //     nuevas ofertas (evita situaciones comerciales incómodas tras el acuerdo).
+  //     Cualquier excepción la gestiona el equipo a mano.
+  const { data: acceptedOffer } = await supabase
+    .from("offers")
+    .select("id")
+    .eq("property_id", property_id)
+    .eq("status", "Accepted")
+    .limit(1)
+    .maybeSingle()
+  if (acceptedOffer) {
+    return jsonResponse(
+      {
+        error:
+          "Esta vivienda ya tiene una oferta aceptada, así que ahora mismo no se pueden registrar nuevas ofertas. Dile al comprador con tacto que la vivienda está apalabrada y que, si lo desea, puede escribir a hola@herohome.es para que el equipo le avise si la operación no llegara a cerrarse.",
+      },
+      409
+    )
   }
 
   // 2. Nombre y email del comprador desde su visita más reciente a esta vivienda

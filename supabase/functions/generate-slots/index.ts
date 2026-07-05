@@ -1,5 +1,6 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.110.0"
 import { alertTeam } from "../_shared/alert.ts"
+import { pingHealthcheck } from "../_shared/healthcheck.ts"
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
@@ -298,6 +299,7 @@ Deno.serve(async (req: Request) => {
       const onSaleIds = (onSaleProps ?? []).map((p) => p.id)
 
       if (onSaleIds.length === 0) {
+        await pingHealthcheck(supabase, "healthcheck_generate_slots")
         return new Response(
           JSON.stringify({ success: true, properties_processed: 0, slots_created: 0, slots_deleted: 0 }),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -337,6 +339,7 @@ Deno.serve(async (req: Request) => {
       subject: `Error fatal (${isCron ? "cron" : "PWA"})`,
       detail: err instanceof Error ? (err.stack ?? message) : message,
     })
+    if (isCron) await pingHealthcheck(supabase, "healthcheck_generate_slots", false)
     return new Response(JSON.stringify({ error: message }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -351,6 +354,9 @@ Deno.serve(async (req: Request) => {
       detail: propertyFailures.join("\n"),
     })
   }
+
+  // Dead-man's-switch: el cron ha corrido hasta el final.
+  if (isCron) await pingHealthcheck(supabase, "healthcheck_generate_slots")
 
   return new Response(
     JSON.stringify({

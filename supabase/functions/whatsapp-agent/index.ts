@@ -1,6 +1,8 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.110.0"
 import { sendWhatsAppText } from "../_shared/send-whatsapp.ts"
 import { alertTeam } from "../_shared/alert.ts"
+import { buildFeeMessage, classifyFeeReply } from "../_shared/fee-gate.ts"
+import { BOOKING_CLAIM_REGEX } from "../_shared/guardrails.ts"
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
@@ -31,45 +33,11 @@ const RATE_LIMIT_NOTICE =
 declare const EdgeRuntime: { waitUntil?: (p: Promise<unknown>) => void } | undefined
 
 // --- Gate de honorarios del comprador (B13 → integrado en B5) ---
+// Las piezas deterministas (texto verbatim del consentimiento y clasificación
+// de la respuesta del comprador) viven en _shared/fee-gate.ts, con tests.
 
 // % de comisión del comprador por defecto si la vivienda no tiene valor (1 = 1%).
 const DEFAULT_BUYER_FEE_PERCENT = 1
-
-// Texto de honorarios (plantilla categoría UTILITY). Lo construye el CÓDIGO con el
-// porcentaje de la vivienda (properties.buyer_fee_percent): NO lo genera ni lo
-// parafrasea el LLM. Se envía verbatim al PC y se guarda en consents.consent_text
-// para trazabilidad legal. El % es invariable por vivienda (decisión de negocio).
-function formatFeePercent(pct: number): string {
-  // 1 → "1"; 0.5 → "0,5" (coma decimal en español, sin ceros sobrantes).
-  return Number.isInteger(pct) ? String(pct) : String(pct).replace(".", ",")
-}
-
-// Importe en euros con formato español ("3.000 €").
-function formatEur(amount: number): string {
-  return new Intl.NumberFormat("es-ES", {
-    style: "currency",
-    currency: "EUR",
-    maximumFractionDigits: 0,
-  }).format(amount)
-}
-
-// salesPrice se pasa para mostrar un € ORIENTATIVO. Es opcional: si no se conoce
-// (o en gates abiertos antes de añadir este dato a agent_state) el mensaje sale
-// solo con el %, idéntico al texto histórico → consent_text retrocompatible.
-function buildFeeMessage(pct: number, salesPrice: number | null = null): string {
-  const amount = pct > 0 && salesPrice && salesPrice > 0 ? Math.round((salesPrice * pct) / 100) : null
-  const estimate =
-    amount != null
-      ? ` Sobre el precio actual de ${formatEur(salesPrice!)}, supondría aproximadamente ${formatEur(amount)}; el importe final se calculará sobre el precio que finalmente se acuerde con el vendedor.`
-      : ""
-  return `Antes de confirmar tu visita, necesito que conozcas las condiciones del servicio:
-
-Herohome cobra una comisión del ${formatFeePercent(pct)}% sobre el precio de venta al comprador. Esta comisión se devenga si formalizas una oferta de compra sobre esta propiedad que es aceptada por el vendedor.${estimate}
-
-Puedes consultar las condiciones completas en: herohome.es/honorarios
-
-¿Aceptas estas condiciones para continuar? Responde SÍ para confirmar tu visita.`
-}
 
 const FEE_CONSENT_TYPE = "buyer_fee_acknowledgement"
 
@@ -88,13 +56,6 @@ const FEE_GATE_BOOKED_MESSAGE =
 // El comprador aceptó pero el hueco ya no estaba disponible (carrera).
 const FEE_GATE_SLOT_TAKEN_MESSAGE =
   "Vaya, ese horario acaba de ocuparse. ¿Quieres que te muestre otros huecos disponibles para tu visita?"
-
-// Clasificación determinista de la respuesta del PC al gate (normalizada a
-// minúsculas + trim antes de evaluar). Sin LLM: robustez legal.
-const FEE_ACCEPT_TOKENS = new Set(["sí", "si", "acepto", "ok", "vale", "perfecto", "confirmo"])
-const FEE_ACCEPT_PHRASES = ["de acuerdo"]
-const FEE_REJECT_TOKENS = new Set(["no", "cancelar"])
-const FEE_REJECT_PHRASES = ["no acepto"]
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -336,6 +297,39 @@ async function callInternalFunction(path: string, init: RequestInit) {
   return { ok: res.ok, status: res.status, data }
 }
 
+// Máximo de horarios ofrecidos al comprador por mensaje: con disponibilidad
+// amplia, listar todos haría el mensaje de WhatsApp interminable.
+const MAX_SLOTS_OFFERED = 15
+
+// Recorta el resultado de get-available-slots a los primeros MAX_SLOTS_OFFERED
+// horarios en orden cronológico, manteniendo la agrupación por día. Si hay más,
+// añade una nota para que Hero se lo diga al comprador.
+// deno-lint-ignore no-explicit-any
+function limitSlots(data: any): unknown {
+  if (!data || !Array.isArray(data.slots)) return data
+  const total = typeof data.total_slots === "number" ? data.total_slots : null
+  // deno-lint-ignore no-explicit-any
+  const days: any[] = []
+  let count = 0
+  for (const day of data.slots) {
+    if (count >= MAX_SLOTS_OFFERED) break
+    const times = Array.isArray(day.times) ? day.times.slice(0, MAX_SLOTS_OFFERED - count) : []
+    if (times.length > 0) {
+      days.push({ ...day, times })
+      count += times.length
+    }
+  }
+  if (total !== null && total > count) {
+    return {
+      ...data,
+      slots: days,
+      shown_slots: count,
+      note: `Hay ${total} horarios disponibles en total; aquí se muestran solo los ${count} más próximos. Si ninguno encaja al comprador, dile que hay más huecos más adelante y pregúntale qué día le vendría mejor.`,
+    }
+  }
+  return { ...data, slots: days }
+}
+
 async function executeTool(
   name: string,
   input: Record<string, unknown>,
@@ -350,7 +344,7 @@ async function executeTool(
       `get-available-slots?property_id=${context.propertyId}&days_ahead=${daysAhead}`,
       { method: "GET" }
     )
-    return data
+    return limitSlots(data)
   }
 
   if (name === "request_visit") {
@@ -505,18 +499,7 @@ async function executeTool(
 }
 
 // --- Gate de honorarios: helpers (deterministas, sin LLM) ---
-
-// Clasifica la respuesta del PC al mensaje de honorarios. El rechazo se evalúa
-// primero para que "no acepto" gane sobre el token "acepto".
-function classifyFeeReply(text: string): "accept" | "reject" | "ambiguous" {
-  const norm = text.toLowerCase().trim()
-  const tokens = new Set(norm.split(/[^a-záéíóúñü]+/i).filter(Boolean))
-  if (FEE_REJECT_PHRASES.some((p) => norm.includes(p))) return "reject"
-  for (const t of FEE_REJECT_TOKENS) if (tokens.has(t)) return "reject"
-  if (FEE_ACCEPT_PHRASES.some((p) => norm.includes(p))) return "accept"
-  for (const t of FEE_ACCEPT_TOKENS) if (tokens.has(t)) return "accept"
-  return "ambiguous"
-}
+// classifyFeeReply y buildFeeMessage se importan de _shared/fee-gate.ts.
 
 // Registra el consentimiento de honorarios en `consents` con trazabilidad
 // completa (texto exacto + wamid del mensaje del PC). Devuelve ok=false si el
@@ -710,7 +693,7 @@ Reglas importantes:
   - Si muestra interés o quiere ofertar, ayúdale a hacer su oferta (procedimiento de create_offer).
   - Si dice que NO le interesa, pregúntale con amabilidad qué es lo que no le ha encajado ("Entiendo, ¿podrías decirme qué es lo que no te ha convencido?"). Cuando te responda (o si no quiere decírtelo), llama a save_visit_feedback con outcome="not_interested" y feedback con lo que te haya dicho, y despídete amablemente.
   - Si te confirma que le interesa pero todavía no quiere ofertar, registra save_visit_feedback con outcome="interested".
-- Para mostrar disponibilidad usa get_available_slots y presenta los horarios agrupados por día.
+- Para mostrar disponibilidad usa get_available_slots y presenta los horarios agrupados por día. Presenta SOLO los horarios que devuelve la tool (nunca más); si el resultado incluye una nota indicando que hay más horarios, transmítesela al comprador con naturalidad.
 - No inventes horarios, propiedades ni datos que no provengan de las tools.
 - NUNCA digas que has enviado un email ni que realizas acciones fuera de tus tools: solo puedes consultar horarios, gestionar visitas y registrar ofertas con tus tools. El aviso de confirmación al comprador (WhatsApp + email) lo envía el sistema automáticamente cuando el propietario confirma la visita, no tú.
 - Si no hay vivienda asociada a la conversación, no llames a las tools de visitas; pide al comprador que contacte desde el anuncio de la vivienda en Idealista.
@@ -1070,7 +1053,7 @@ async function processMessage(
     // Guardarraíl anti-alucinación: si el modelo afirma una reserva sin que
     // request_visit haya tenido éxito en este turno, lo corregimos para no
     // mentir al comprador (caso visto al reagendar con los datos ya recogidos).
-    if (/(reserv|solicit|agend|confirm|registr)\w*(ad|and)|un momento|enseguida|procesando/i.test(finalText) && !requestVisitOk && !offerActionOk) {
+    if (BOOKING_CLAIM_REGEX.test(finalText) && !requestVisitOk && !offerActionOk) {
       anthropicMessages.push({ role: "assistant", content: finalText })
       anthropicMessages.push({
         role: "user",
@@ -1082,7 +1065,7 @@ async function processMessage(
       offerActionOk = offerActionOk || retry.offerActionOk
       if (retry.finalText) finalText = retry.finalText
       // Última red de seguridad: si AÚN afirma una reserva sin éxito, no mentir.
-      if (/(reserv|solicit|agend|confirm|registr)\w*(ad|and)|un momento|enseguida|procesando/i.test(finalText) && !requestVisitOk && !offerActionOk) {
+      if (BOOKING_CLAIM_REGEX.test(finalText) && !requestVisitOk && !offerActionOk) {
         finalText =
           "Perdona, no he podido completar la reserva ahora mismo. ¿Me confirmas de nuevo el día y la hora que prefieres y lo intento otra vez?"
       }

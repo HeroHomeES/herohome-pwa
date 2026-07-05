@@ -4,7 +4,10 @@
 -- Pegar en: Supabase Dashboard → SQL Editor → New query
 -- Ejecutar completo de una vez (botón "Run" o Cmd+Enter)
 -- ================================================================
--- ANTES DE EJECUTAR: sustituye el placeholder al final del archivo
+-- ✅ SIN PLACEHOLDERS: la HEROHOME_API_KEY se lee de la tabla
+--    app_config (migración 2026-07-06-app-config.sql — aplicarla
+--    ANTES de este archivo). Este archivo es SEGURO de re-ejecutar
+--    entero: no puede volver a romper los crons.
 -- ================================================================
 
 
@@ -26,9 +29,9 @@ CREATE EXTENSION IF NOT EXISTS pg_net  WITH SCHEMA extensions;
 -- con status = 'On sale': crea los slots que falten (incluido el nuevo
 -- día que entra en la ventana) y borra los 'Available' obsoletos.
 -- Nunca toca reservas (Pending/Confirmed) ni slots bloqueados.
+-- Dead-man's-switch: lo hace la propia Edge Function (healthcheck_generate_slots).
 -- ================================================================
 
--- Desregistrar el cron mensual antiguo (obsoleto) y el diario si ya existe
 SELECT cron.unschedule(jobid)
 FROM cron.job
 WHERE jobname IN ('generate-monthly-slots', 'generate-daily-slots');
@@ -41,7 +44,7 @@ SELECT cron.schedule(
     url     := 'https://zqkvcphtqmibttgnivku.supabase.co/functions/v1/generate-slots',
     headers := jsonb_build_object(
       'Content-Type', 'application/json',
-      'x-api-key',    'TU_HEROHOME_API_KEY_AQUI'
+      'x-api-key',    (SELECT value FROM app_config WHERE key = 'herohome_api_key')
     ),
     body    := '{}'::jsonb
   );
@@ -59,6 +62,8 @@ SELECT cron.schedule(
 --              en awaiting_fee_consent >24h (el PC no respondió al gate).
 --              El slot nunca se reservó (sigue Available): solo se limpia
 --              el estado de la conversación. Cron silencioso (sin aviso al PC).
+-- Operación 4: Purga los registros de dedupe del webhook (>7 días).
+-- Operación 5: Dead-man's-switch — ping a Healthchecks.io si está configurado.
 -- ================================================================
 
 -- NOTA sobre status: la tabla usa Title Case, no snake_case.
@@ -98,11 +103,18 @@ SELECT cron.schedule(
       AND  (agent_state->>'gate_sent_at')::timestamptz < now() - interval '24 hours';
 
     -- 4. Dedupe del webhook de WhatsApp: purgar registros antiguos (>7 días).
-    --    Guardado con to_regclass para que el cron no falle si la migración
-    --    2026-07-05-team-y-webhook.sql aún no se ha aplicado.
+    --    Guardado con to_regclass para no fallar si falta la migración.
     IF to_regclass('public.wa_processed_messages') IS NOT NULL THEN
       DELETE FROM wa_processed_messages
       WHERE received_at < now() - interval '7 days';
+    END IF;
+
+    -- 5. Dead-man's-switch: "he corrido hasta el final".
+    IF to_regclass('public.app_config') IS NOT NULL THEN
+      PERFORM net.http_get(url := value)
+      FROM app_config
+      WHERE key = 'healthcheck_cleanup_old_slots'
+        AND coalesce(value, '') <> '';
     END IF;
 
   END;
@@ -126,11 +138,25 @@ SELECT cron.schedule(
   'complete-visits',
   '0 23 * * *',                       -- diario a las 23:00 UTC
   $$
-  UPDATE visit_slots
-  SET    status     = 'Completed',
-         updated_at = now()
-  WHERE  end_time < now()
-    AND  status   = 'Confirmed';
+  DO $body$
+  BEGIN
+
+    UPDATE visit_slots
+    SET    status     = 'Completed',
+           updated_at = now()
+    WHERE  end_time < now()
+      AND  status   = 'Confirmed';
+
+    -- Dead-man's-switch: "he corrido hasta el final".
+    IF to_regclass('public.app_config') IS NOT NULL THEN
+      PERFORM net.http_get(url := value)
+      FROM app_config
+      WHERE key = 'healthcheck_complete_visits'
+        AND coalesce(value, '') <> '';
+    END IF;
+
+  END;
+  $body$
   $$
 );
 
@@ -141,7 +167,7 @@ SELECT cron.schedule(
 -- Llama a la Edge Function visit-reminders (con x-api-key) → recordatorio
 -- "el día antes" de las visitas Confirmed: WhatsApp (plantilla) + email al PC,
 -- y email al CV (propietario).
--- ANTES DE EJECUTAR: sustituye TU_HEROHOME_API_KEY_AQUI por el valor de HEROHOME_API_KEY.
+-- Dead-man's-switch: lo hace la propia Edge Function (healthcheck_visit_reminders).
 -- ================================================================
 
 SELECT cron.unschedule(jobid)
@@ -156,7 +182,7 @@ SELECT cron.schedule(
     url     := 'https://zqkvcphtqmibttgnivku.supabase.co/functions/v1/visit-reminders',
     headers := jsonb_build_object(
       'Content-Type', 'application/json',
-      'x-api-key',    'TU_HEROHOME_API_KEY_AQUI'
+      'x-api-key',    (SELECT value FROM app_config WHERE key = 'herohome_api_key')
     ),
     body    := '{}'::jsonb
   );
@@ -170,6 +196,7 @@ SELECT cron.schedule(
 -- Llama a la Edge Function post-visit-followup (con x-api-key) → envía el
 -- mensaje post-visita ~1h después de cada visita Confirmed para invitar a
 -- ofertar o recoger feedback. Idempotente vía visit_slots.post_visit_sent_at.
+-- Dead-man's-switch: lo hace la propia Edge Function (healthcheck_post_visit_followup).
 -- ================================================================
 
 SELECT cron.unschedule(jobid)
@@ -184,7 +211,7 @@ SELECT cron.schedule(
     url     := 'https://zqkvcphtqmibttgnivku.supabase.co/functions/v1/post-visit-followup',
     headers := jsonb_build_object(
       'Content-Type', 'application/json',
-      'x-api-key',    'TU_HEROHOME_API_KEY_AQUI'
+      'x-api-key',    (SELECT value FROM app_config WHERE key = 'herohome_api_key')
     ),
     body    := '{}'::jsonb
   );

@@ -1,6 +1,7 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.110.0"
 import { sendWhatsAppTemplate } from "../_shared/send-whatsapp.ts"
 import { alertTeam } from "../_shared/alert.ts"
+import { pingHealthcheck } from "../_shared/healthcheck.ts"
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
@@ -142,11 +143,21 @@ async function handle(req: Request): Promise<Response> {
 }
 
 Deno.serve(async (req: Request): Promise<Response> => {
+  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
   try {
-    return await handle(req)
+    const res = await handle(req)
+    // Dead-man's-switch: solo señales de ejecuciones reales del cron
+    // (POST autenticado), nunca de OPTIONS ni de probes sin auth (401).
+    if (req.method === "POST" && res.status === 200) {
+      await pingHealthcheck(supabase, "healthcheck_post_visit_followup")
+    } else if (req.method === "POST" && res.status === 500) {
+      await pingHealthcheck(supabase, "healthcheck_post_visit_followup", false)
+    }
+    return res
   } catch (e) {
     const detail = e instanceof Error ? (e.stack ?? e.message) : String(e)
     await alertTeam({ source: "post-visit-followup", subject: "Excepción no controlada en el cron", detail })
+    await pingHealthcheck(supabase, "healthcheck_post_visit_followup", false)
     return jsonResponse({ error: "internal error" }, 500)
   }
 })

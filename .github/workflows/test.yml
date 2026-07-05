@@ -1,0 +1,22 @@
+name: Tests
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'supabase/functions/**'
+  pull_request:
+    paths:
+      - 'supabase/functions/**'
+jobs:
+  deno-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      # Tests de las piezas deterministas (gate de honorarios, guardarraíles).
+      # deno test también tipa los módulos _shared importados por los tests.
+      - name: Run tests
+        run: deno test supabase/functions/_shared/

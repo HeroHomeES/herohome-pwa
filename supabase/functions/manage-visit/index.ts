@@ -1,4 +1,4 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.110.0"
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
@@ -44,14 +44,15 @@ function getUserIdFromJWT(token: string): string | null {
   }
 }
 
-// Reutiliza notify-visit (Resend + WhatsApp al PC), igual que hace la PWA.
+// Reutiliza notify-visit (Resend + WhatsApp al PC). notify-visit es interna:
+// exige x-api-key; el anon Bearer solo satisface al gateway (verify_jwt=true).
 async function notifyVisit(visitSlotId: string, action: string): Promise<void> {
   try {
     await fetch(`${FUNCTIONS_BASE_URL}/notify-visit`, {
       method: "POST",
       headers: {
-        // notify-visit tiene verify_jwt=true: el anon key satisface al gateway.
         Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+        "x-api-key": HEROHOME_API_KEY,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ visit_slot_id: visitSlotId, action }),

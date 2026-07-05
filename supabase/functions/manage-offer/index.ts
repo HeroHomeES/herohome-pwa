@@ -1,4 +1,4 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.110.0"
 import { sendEmail } from "../_shared/send-email.ts"
 import { sendWhatsAppTemplate, sendWhatsAppText } from "../_shared/send-whatsapp.ts"
 import {

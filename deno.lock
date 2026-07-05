@@ -1,0 +1,45 @@
+{
+  "version": "5",
+  "specifiers": {
+    "jsr:@std/assert@1": "1.0.19",
+    "jsr:@std/internal@^1.0.12": "1.0.14"
+  },
+  "jsr": {
+    "@std/assert@1.0.19": {
+      "integrity": "eaada96ee120cb980bc47e040f82814d786fe8162ecc53c91d8df60b8755991e",
+      "dependencies": [
+        "jsr:@std/internal"
+      ]
+    },
+    "@std/internal@1.0.14": {
+      "integrity": "291516b3d4c35024d6ffbc0a9df5bf4c64116e05b50012cf846710152d2ffdf7"
+    }
+  },
+  "remote": {
+    "https://esm.sh/@supabase/supabase-js@2.110.0": "b99c0ce7729f9de7797f836b93ab9ec94f1cfe079b4f937fa4144fe13525e979"
+  },
+  "workspace": {
+    "packageJson": {
+      "dependencies": [
+        "npm:@eslint/js@^9.25.0",
+        "npm:@supabase/supabase-js@^2.49.4",
+        "npm:@tailwindcss/vite@^4.1.5",
+        "npm:@types/react-dom@^19.1.2",
+        "npm:@types/react@^19.1.2",
+        "npm:@vitejs/plugin-react@^4.4.1",
+        "npm:eslint-plugin-react-hooks@^5.2.0",
+        "npm:eslint-plugin-react-refresh@~0.4.19",
+        "npm:eslint@^9.25.0",
+        "npm:globals@16",
+        "npm:react-dom@^19.1.0",
+        "npm:react-router-dom@^7.5.3",
+        "npm:react@^19.1.0",
+        "npm:tailwindcss@^4.1.5",
+        "npm:typescript-eslint@^8.30.1",
+        "npm:typescript@~5.8.3",
+        "npm:vite-plugin-pwa@~0.21.1",
+        "npm:vite@^6.3.2"
+      ]
+    }
+  }
+}

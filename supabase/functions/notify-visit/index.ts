@@ -1,4 +1,4 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.110.0"
 import { sendEmail } from "../_shared/send-email.ts"
 import { sendWhatsAppTemplate, sendWhatsAppText } from "../_shared/send-whatsapp.ts"
 import { visitConfirmationHtml, visitCancellationHtml } from "../_shared/email-templates/visit-status.ts"
@@ -47,9 +47,12 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ error: "Method not allowed" }, 405)
   }
 
-  // La PWA invoca con el JWT de sesión del CV (verify_jwt=true en esta función).
-  if (!req.headers.get("Authorization")) {
-    return jsonResponse({ error: "Missing authorization header" }, 401)
+  // Función INTERNA: solo la invoca manage-visit (con x-api-key). Antes bastaba
+  // cualquier JWT válido (incluida la anon key pública del bundle de la PWA),
+  // lo que permitía re-disparar notificaciones conociendo el UUID de una visita.
+  const apiKey = req.headers.get("x-api-key")
+  if (!apiKey || apiKey !== Deno.env.get("HEROHOME_API_KEY")) {
+    return jsonResponse({ error: "Unauthorized" }, 401)
   }
 
   let body: { visit_slot_id?: string; action?: string }

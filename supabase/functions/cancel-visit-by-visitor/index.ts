@@ -1,4 +1,4 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.110.0"
 import { sendEmail } from "../_shared/send-email.ts"
 import { ownerVisitCanceledByVisitorHtml } from "../_shared/email-templates/visit-status.ts"
 
