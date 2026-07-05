@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import { alertTeam } from "../_shared/alert.ts"
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
@@ -12,8 +13,10 @@ const CLAUDE_MODEL = "claude-sonnet-4-6"
 const MAX_TOOL_ITERATIONS = 5
 const MAX_HISTORY_MESSAGES = 20
 
-// Asesor humano: agenda + email (cierre garantista).
-const AGENT_CALENDAR_URL = "https://calendar.app.google/evtp4dF7qncxggiYA"
+// Asesor humano por defecto: agenda + email (cierre garantista). Si la vivienda
+// tiene agente asignado (properties.agent_name / agent_calendar_url, sección
+// "Mi Equipo"), esos valores tienen prioridad en el prompt.
+const AGENT_CALENDAR_URL = "https://calendar.app.google/PuJQpTUbAmTX5hjk8"
 const AGENT_EMAIL = "hola@herohome.es"
 
 const corsHeaders = {
@@ -279,6 +282,11 @@ function buildPropertySummary(p: any): string {
 
 // deno-lint-ignore no-explicit-any
 function buildSystemPrompt(property: any): string {
+  // Agente humano de la vivienda (sección "Mi Equipo"); fallback a los defaults.
+  const calendarUrl = (property.agent_calendar_url as string | null) || AGENT_CALENDAR_URL
+  const agentName = (property.agent_name as string | null) || null
+  const advisorLabel = agentName ? `su asesor personal, ${agentName}` : "su asesor personal"
+
   return `Eres Hero, el asistente de Herohome (la primera agencia inmobiliaria 100% digital de España). Hablas por el chat de la app con el PROPIETARIO (el vendedor) y le ayudas a gestionar la venta de su vivienda. Responde siempre en español, con un tono cercano, profesional y breve.
 
 Hoy es ${todayMadrid()} (hora de Madrid).
@@ -298,11 +306,11 @@ Qué PUEDES hacer (con tus tools):
 
 Qué NO puedes hacer:
 - NO puedes actuar sobre las ofertas (aceptar, rechazar ni contraofertar). Si te lo piden, discúlpate y dile que debe hacerlo él mismo en la sección "Ofertas" de la app.
-- Si te pide consejo sobre si aceptar o rechazar una oferta, dile que es una decisión muy relevante y sugiérele hablar con su asesor personal agendando una llamada: ${AGENT_CALENDAR_URL} (o escribiendo a ${AGENT_EMAIL}). No le aconsejes tú qué decidir.
+- Si te pide consejo sobre si aceptar o rechazar una oferta, dile que es una decisión muy relevante y sugiérele hablar con ${advisorLabel} agendando una llamada: ${calendarUrl} (o escribiendo a ${AGENT_EMAIL}). No le aconsejes tú qué decidir.
 - NO puedes crear huecos nuevos ni cambiar su disponibilidad recurrente (la plantilla semanal). Para abrir disponibilidad o cambiarla de forma permanente, indícale que lo haga en la sección de Disponibilidad de la app. Tú solo puedes bloquear huecos puntuales (block_slots).
 
 Reglas:
-- GARANTISTA: ante cualquier duda de si puedes o debes hacer algo, NO lo hagas; discúlpate y sugiérele agendar una llamada con su asesor (${AGENT_CALENDAR_URL} o ${AGENT_EMAIL}).
+- GARANTISTA: ante cualquier duda de si puedes o debes hacer algo, NO lo hagas; discúlpate y sugiérele agendar una llamada con ${advisorLabel} (${calendarUrl} o ${AGENT_EMAIL}).
 - CONFIRMACIÓN: antes de ejecutar cualquier acción que cambie datos (confirm_visit, cancel_visit, block_slots), describe en lenguaje claro el cambio exacto y pide confirmación explícita. Llama a la tool SOLO tras un "sí" claro del propietario. Para consultas (get_*) no hace falta confirmación.
 - ANTI-ALUCINACIÓN: nunca digas que has confirmado, cancelado o bloqueado algo salvo que la tool correspondiente te haya devuelto éxito en ESTE mismo turno. Si una tool devuelve un error, explícaselo con naturalidad y, si procede, sugiere el asesor. No te inventes visitas, fechas, ofertas ni importes: usa solo lo que devuelven las tools.
 - Cuando una tool de acción devuelva error por la regla de 24h u otra restricción, NO insistas: traslada el motivo y ofrece la alternativa (p. ej. el asesor).`
@@ -395,7 +403,8 @@ Deno.serve(async (req: Request) => {
   try {
     // Vivienda del propietario (filtrado SIEMPRE por el user_id del JWT verificado).
     const { data: properties } = await supabase.from("properties").select("*").eq("user_id", userId)
-    const property = (properties ?? []).find((p) => p.status === "On Sale") ?? (properties ?? [])[0]
+    // OJO: la BD guarda "On sale" (minúscula, valor que envía Salesforce).
+    const property = (properties ?? []).find((p) => p.status === "On sale") ?? (properties ?? [])[0]
     if (!property) {
       return jsonResponse({
         message: `No encuentro ninguna vivienda asociada a tu cuenta. Si crees que es un error, escríbenos a ${AGENT_EMAIL} o agenda una llamada con tu asesor: ${AGENT_CALENDAR_URL}`,
@@ -447,7 +456,14 @@ Deno.serve(async (req: Request) => {
     }
     return jsonResponse({ message: finalText }, 200)
   } catch (err) {
-    console.error("[chat-with-hero] Error:", err instanceof Error ? err.message : String(err))
+    const msg = err instanceof Error ? err.message : String(err)
+    console.error("[chat-with-hero] Error:", msg)
+    // El canal del propietario no debe fallar en silencio hacia el equipo.
+    await alertTeam({
+      source: "chat-with-hero",
+      subject: "Error atendiendo al propietario en el chat de la PWA",
+      detail: `user_id: ${userId}\n${msg}`,
+    })
     return jsonResponse({ error: "Hero no está disponible en este momento." }, 500)
   }
 })

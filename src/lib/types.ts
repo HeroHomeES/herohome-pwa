@@ -82,9 +82,13 @@ export interface Property {
   buyer_fee: number | null
   ref_catastral: string | null
   description: string | null
-  status: 'On Sale' | 'Sold' | 'Contract cancelled' | null
+  status: 'On sale' | 'Sold' | 'Contract cancelled' | null
   garage_space: 'Sin plaza de garaje' | 'Con 1 plaza de garaje' | 'Con 2 plazas de garaje' | 'Con 3 plazas de garaje' | null
   registro_propiedad: number | null
+  // Agente humano asignado a la vivienda (sección "Mi Equipo"; NULL = defaults de la app)
+  agent_name: string | null
+  agent_photo_url: string | null
+  agent_calendar_url: string | null
   sf_last_sync_at: string | null
   created_at: string | null
   updated_at: string | null

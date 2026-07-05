@@ -12,6 +12,7 @@ const HomePage = lazy(() => import('./pages/HomePage'))
 const PropertyPage = lazy(() => import('./pages/PropertyPage'))
 const CalendarPage = lazy(() => import('./pages/CalendarPage'))
 const OffersPage = lazy(() => import('./pages/OffersPage'))
+const TeamPage = lazy(() => import('./pages/TeamPage'))
 
 const spinner = (
   <div className="min-h-screen flex items-center justify-center">
@@ -36,6 +37,7 @@ const router = createBrowserRouter([
       { path: '/property', element: <Suspense fallback={null}><PropertyPage /></Suspense> },
       { path: '/calendar', element: <Suspense fallback={null}><CalendarPage /></Suspense> },
       { path: '/offers', element: <Suspense fallback={null}><OffersPage /></Suspense> },
+      { path: '/team', element: <Suspense fallback={null}><TeamPage /></Suspense> },
     ],
   },
   { path: '*', element: <Navigate to="/" replace /> },

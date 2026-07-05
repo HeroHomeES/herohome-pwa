@@ -48,6 +48,7 @@ const navItems = [
   { to: '/property',  label: 'Mi Vivienda',   icon: '🏡', end: false },
   { to: '/calendar',  label: 'Mi Calendario', icon: '📅', end: false },
   { to: '/offers',    label: 'Mis Ofertas',   icon: '💼', end: false },
+  { to: '/team',      label: 'Mi Equipo',     icon: '👥', end: false },
 ]
 
 // ─── Layout ───────────────────────────────────────────────────────────────────

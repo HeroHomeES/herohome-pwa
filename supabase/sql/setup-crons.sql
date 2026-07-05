@@ -97,6 +97,14 @@ SELECT cron.schedule(
     WHERE  agent_state->>'state' = 'awaiting_fee_consent'
       AND  (agent_state->>'gate_sent_at')::timestamptz < now() - interval '24 hours';
 
+    -- 4. Dedupe del webhook de WhatsApp: purgar registros antiguos (>7 días).
+    --    Guardado con to_regclass para que el cron no falle si la migración
+    --    2026-07-05-team-y-webhook.sql aún no se ha aplicado.
+    IF to_regclass('public.wa_processed_messages') IS NOT NULL THEN
+      DELETE FROM wa_processed_messages
+      WHERE received_at < now() - interval '7 days';
+    END IF;
+
   END;
   $body$
   $$

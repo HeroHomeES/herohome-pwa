@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { sendWhatsAppText } from "../_shared/send-whatsapp.ts"
+import { alertTeam } from "../_shared/alert.ts"
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
@@ -13,6 +14,21 @@ const FUNCTIONS_BASE_URL = `${SUPABASE_URL}/functions/v1`
 // Sonnet 4.6: mejor disciplina de tool-calling que Haiku para el agente conversacional.
 const CLAUDE_MODEL = "claude-sonnet-4-6"
 const MAX_TOOL_ITERATIONS = 5
+
+// Historial máximo enviado al modelo por turno: acota el coste por mensaje
+// (crece linealmente con la conversación) y evita chocar con el límite de
+// contexto en negociaciones largas. El historial completo sigue en BD.
+const MAX_HISTORY_MESSAGES = 30
+
+// Rate limit por teléfono (protección de coste de la API ante spam o bucles):
+// al llegar al límite se avisa una vez; por encima, se ignora en silencio.
+const RATE_LIMIT_MAX_PER_HOUR = 20
+const RATE_LIMIT_NOTICE =
+  "Hemos recibido muchos mensajes tuyos en muy poco tiempo, así que voy a hacer una pausa. Vuelve a escribirme dentro de un rato o contáctanos en hola@herohome.es."
+
+// Supabase Edge Runtime: permite responder el 200 a Meta de inmediato y seguir
+// procesando en segundo plano (si no existe, se procesa en primer plano).
+declare const EdgeRuntime: { waitUntil?: (p: Promise<unknown>) => void } | undefined
 
 // --- Gate de honorarios del comprador (B13 → integrado en B5) ---
 
@@ -589,6 +605,46 @@ async function enterFeeGate(
   await saveTurn(waPhoneNumber, propertyId, userText, feeMessage)
 }
 
+// --- Dedupe + rate limit (tabla wa_processed_messages) ---
+
+// Registra el wamid del mensaje entrante. Meta REINTENTA el webhook si el 200
+// tarda (el loop del LLM puede tardar >10s): si el wamid ya existe, es un
+// reintento y NO debe procesarse otra vez (evita respuestas/reservas dobles).
+// FAIL-OPEN: si la tabla no existe aún (migración pendiente) o el INSERT falla
+// por otra causa, se procesa igual — mejor un duplicado que perder un mensaje.
+async function isNewMessage(
+  supabase: ReturnType<typeof createClient>,
+  message: WhatsAppMessage
+): Promise<boolean> {
+  if (!message.id) return true
+  const { error } = await supabase
+    .from("wa_processed_messages")
+    .insert({ wamid: message.id, wa_phone: message.from })
+  if (!error) return true
+  if (error.code === "23505") {
+    console.log(`[whatsapp-agent] Reintento de Meta ignorado (wamid ${message.id})`)
+    return false
+  }
+  console.error("[whatsapp-agent] Dedupe no disponible (¿migración pendiente?):", error.message)
+  return true
+}
+
+// Mensajes registrados de este teléfono en la última hora (incluye el actual,
+// ya insertado por isNewMessage). null si la tabla no está disponible (fail-open).
+async function hourlyMessageCount(
+  supabase: ReturnType<typeof createClient>,
+  waPhoneNumber: string
+): Promise<number | null> {
+  const since = new Date(Date.now() - 3_600_000).toISOString()
+  const { count, error } = await supabase
+    .from("wa_processed_messages")
+    .select("wamid", { count: "exact", head: true })
+    .eq("wa_phone", waPhoneNumber)
+    .gte("received_at", since)
+  if (error) return null
+  return count ?? null
+}
+
 // --- Anthropic call ---
 
 async function callClaude(system: string, messages: unknown[]): Promise<AnthropicResponse> {
@@ -780,26 +836,82 @@ Deno.serve(async (req: Request) => {
   try {
     payload = JSON.parse(rawBody)
   } catch {
-    return new Response("OK", { status: 200, headers: corsHeaders })
+    return okResponse()
   }
 
-  const message = payload.entry?.[0]?.changes?.[0]?.value?.messages?.[0]
-
-  // No incoming message (e.g. delivery/read status update) — acknowledge and exit
-  if (!message) {
-    return new Response("OK", { status: 200, headers: corsHeaders })
+  // Todos los mensajes del webhook: Meta puede agrupar varios (entry/changes/
+  // messages) en un mismo POST — antes solo se procesaba el primero.
+  const incoming: WhatsAppMessage[] = []
+  for (const entry of payload.entry ?? []) {
+    for (const change of entry.changes ?? []) {
+      for (const msg of change.value?.messages ?? []) incoming.push(msg)
+    }
   }
 
-  const waPhoneNumber = message.from
+  // Sin mensajes (p.ej. actualización de entrega/lectura) — ack y salir.
+  if (incoming.length === 0) {
+    return okResponse()
+  }
+
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
+  // Dedupe por wamid: descartar reintentos de Meta (mensajes ya procesados).
+  const fresh: WhatsAppMessage[] = []
+  for (const msg of incoming) {
+    if (await isNewMessage(supabase, msg)) fresh.push(msg)
+  }
+  if (fresh.length === 0) {
+    return okResponse()
+  }
+
+  // Responder el 200 a Meta YA y procesar en segundo plano: si el 200 tarda
+  // (el loop del LLM puede superar los 10s), Meta reintenta el webhook.
+  // Secuencial dentro del lote para no pisar el estado de la conversación.
+  const work = (async () => {
+    for (const msg of fresh) {
+      await processMessage(supabase, msg)
+    }
+  })()
+
+  if (typeof EdgeRuntime !== "undefined" && EdgeRuntime?.waitUntil) {
+    EdgeRuntime.waitUntil(work)
+  } else {
+    await work
+  }
+
+  return okResponse()
+})
+
+function okResponse(): Response {
+  return new Response("OK", { status: 200, headers: corsHeaders })
+}
+
+// --- Procesado de un mensaje entrante ---
+// Corre en segundo plano tras el ack a Meta. Toda la lógica conversacional
+// (rate limit, gate de honorarios, loop del LLM, guardarraíl) vive aquí.
+
+async function processMessage(
+  supabase: ReturnType<typeof createClient>,
+  message: WhatsAppMessage
+): Promise<void> {
+  const waPhoneNumber = message.from
+
   try {
+    // Rate limit por teléfono: protege el coste de la API ante spam o bucles.
+    // Justo al llegar al límite se avisa UNA vez; por encima, silencio total.
+    const recentCount = await hourlyMessageCount(supabase, waPhoneNumber)
+    if (recentCount !== null && recentCount > RATE_LIMIT_MAX_PER_HOUR) return
+    if (recentCount !== null && recentCount === RATE_LIMIT_MAX_PER_HOUR) {
+      await sendWhatsAppText({ to: waPhoneNumber, body: RATE_LIMIT_NOTICE })
+      return
+    }
+
     if (message.type !== "text" || !message.text?.body) {
       await sendWhatsAppText({
         to: waPhoneNumber,
         body: "Por ahora solo puedo leer mensajes de texto. ¿Puedes escribirme tu consulta?",
       })
-      return new Response("OK", { status: 200, headers: corsHeaders })
+      return
     }
 
     const userText = message.text.body
@@ -841,7 +953,7 @@ Deno.serve(async (req: Request) => {
         if (!consentRes.ok) {
           await sendWhatsAppText({ to: waPhoneNumber, body: FEE_GATE_ERROR_MESSAGE })
           await saveTurn(waPhoneNumber, propertyId, userText, FEE_GATE_ERROR_MESSAGE)
-          return new Response("OK", { status: 200, headers: corsHeaders })
+          return
         }
 
         // Consentimiento RGPD de la visita (se conserva el registro previo de B5).
@@ -875,7 +987,7 @@ Deno.serve(async (req: Request) => {
         await sendWhatsAppText({ to: waPhoneNumber, body: reply })
         await setAgentState(supabase, waPhoneNumber, propertyId, null)
         await saveTurn(waPhoneNumber, propertyId, userText, reply)
-        return new Response("OK", { status: 200, headers: corsHeaders })
+        return
       }
 
       // --- RECHAZA: cerrar. El slot nunca se reservó, sigue Available ---
@@ -883,7 +995,7 @@ Deno.serve(async (req: Request) => {
         await sendWhatsAppText({ to: waPhoneNumber, body: FEE_GATE_REJECTION_MESSAGE })
         await setAgentState(supabase, waPhoneNumber, propertyId, null)
         await saveTurn(waPhoneNumber, propertyId, userText, FEE_GATE_REJECTION_MESSAGE)
-        return new Response("OK", { status: 200, headers: corsHeaders })
+        return
       }
 
       // --- AMBIGUO: 1 reintento; al segundo mensaje ambiguo, tratar como rechazo ---
@@ -895,13 +1007,13 @@ Deno.serve(async (req: Request) => {
           retries: (agentState.retries ?? 0) + 1,
         })
         await saveTurn(waPhoneNumber, propertyId, userText, feeMessage)
-        return new Response("OK", { status: 200, headers: corsHeaders })
+        return
       }
 
       await sendWhatsAppText({ to: waPhoneNumber, body: FEE_GATE_REJECTION_MESSAGE })
       await setAgentState(supabase, waPhoneNumber, propertyId, null)
       await saveTurn(waPhoneNumber, propertyId, userText, FEE_GATE_REJECTION_MESSAGE)
-      return new Response("OK", { status: 200, headers: corsHeaders })
+      return
     }
 
     let property: { street?: string; city?: string; sales_price?: number; buyer_fee_percent?: number | string | null } | null = null
@@ -920,9 +1032,12 @@ Deno.serve(async (req: Request) => {
     // numeric de Postgres puede llegar como string → coercionar (para el € orientativo).
     const salesPrice = property?.sales_price != null ? Number(property.sales_price) : null
 
-    const history: { role: string; content: string }[] = Array.isArray(conversation?.messages)
+    const fullHistory: { role: string; content: string }[] = Array.isArray(conversation?.messages)
       ? (conversation!.messages as { role: string; content: string }[])
       : []
+    // Acotar el historial enviado al modelo (el completo sigue en BD): el coste
+    // por turno crece linealmente con la conversación si no se recorta.
+    const history = fullHistory.slice(-MAX_HISTORY_MESSAGES)
 
     // The Anthropic Messages API requires the first message to have role "user".
     // process-idealista-lead seeds new conversations with a leading "assistant"
@@ -949,7 +1064,7 @@ Deno.serve(async (req: Request) => {
     // completará en el siguiente turno solo si el comprador acepta (rama de arriba).
     if (toolContext.feeGate) {
       await enterFeeGate(supabase, waPhoneNumber, propertyId, toolContext.feeGate, userText)
-      return new Response("OK", { status: 200, headers: corsHeaders })
+      return
     }
 
     // Guardarraíl anti-alucinación: si el modelo afirma una reserva sin que
@@ -977,7 +1092,7 @@ Deno.serve(async (req: Request) => {
     // gate aquí (mismo helper, texto verbatim) en vez de enviar el finalText.
     if (toolContext.feeGate) {
       await enterFeeGate(supabase, waPhoneNumber, propertyId, toolContext.feeGate, userText)
-      return new Response("OK", { status: 200, headers: corsHeaders })
+      return
     }
 
     if (!finalText) {
@@ -998,14 +1113,19 @@ Deno.serve(async (req: Request) => {
       }),
     })
 
-    return new Response("OK", { status: 200, headers: corsHeaders })
+    return
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err)
-    console.error("[whatsapp-agent] Error:", message)
+    const errMsg = err instanceof Error ? err.message : String(err)
+    console.error("[whatsapp-agent] Error:", errMsg)
+    // El canal de venta no debe fallar en silencio hacia el equipo.
+    await alertTeam({
+      source: "whatsapp-agent",
+      subject: "Error procesando el mensaje de un comprador",
+      detail: `Teléfono: ${waPhoneNumber}\nwamid: ${message.id ?? "desconocido"}\n${errMsg}`,
+    })
     await sendWhatsAppText({
       to: waPhoneNumber,
       body: "Disculpa, he tenido un problema técnico. Inténtalo de nuevo en unos minutos.",
     }).catch(() => {})
-    return new Response("OK", { status: 200, headers: corsHeaders })
   }
-})
+}

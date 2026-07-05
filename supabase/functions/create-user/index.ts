@@ -168,7 +168,8 @@ Deno.serve(async (req: Request) => {
     built_area: property?.builtArea ?? null,
     useful_surface_area: usefulSurfaceArea ?? null,
     sales_price: property?.salesPrice ?? null,
-    status: property?.status ?? "On Sale",
+    // "On sale" (minúscula): el valor que envía Salesforce y por el que filtran los crons.
+    status: property?.status ?? "On sale",
     description: property?.description ?? null,
     age: property?.age ?? null,
     community_fee: property?.communityFee ?? null,

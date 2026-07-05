@@ -227,6 +227,16 @@ src/
 
 ## Registro de sesiones
 
+### 5 julio 2026 — Sección "Mi Equipo" (PWA) + robustez del agente WhatsApp (P1–P5) — ⏳ PENDIENTE: aplicar SQL + push + prueba e2e
+
+- **P3 — `'On sale'` normalizado** en los 3 sitios que quedaban con `'On Sale'`: `chat-with-hero` (selección de vivienda: el `find` fallaba siempre y caía al fallback `properties[0]`), el **default de `create-user`** (creaba viviendas con casing distinto al que envía SF) y `Property.status` del front. BD verificada vacía vía MCP (wipe del 2 jul): sin datos que corregir.
+- **Sección "Mi Equipo"**: nueva `TeamPage` (`/team`, ítem 👥 del menú). Tarjeta de Hero (agente IA · 24/7, avatar ilustrado — nunca foto de persona) y tarjeta del **agente humano configurable POR VIVIENDA** vía `properties.agent_name` / `agent_photo_url` / `agent_calendar_url` (editar en Table Editor; sin foto se muestra la inicial). Fallbacks: "Alejandro Yuste" + `https://calendar.app.google/PuJQpTUbAmTX5hjk8`. CTA "Solicitar llamada con mi agente" → Google Calendar. `chat-with-hero` usa el nombre/calendario del agente de la vivienda en el prompt (URL por defecto actualizada de `evtp4dF7qncxggiYA` → `PuJQpTUbAmTX5hjk8`).
+- **P1 — webhook robusto** (`whatsapp-agent`): (a) procesa TODOS los mensajes del POST de Meta (antes solo `messages[0]`: el 2º mensaje de un lote se perdía); (b) **dedupe por wamid** en la tabla nueva `wa_processed_messages` — Meta REINTENTA el webhook si el 200 tarda y el loop del LLM puede superar los 10s → antes podía duplicar respuestas; (c) **ack 200 inmediato** a Meta y procesado en segundo plano (`EdgeRuntime.waitUntil`, secuencial dentro del lote). **FAIL-OPEN**: sin la tabla (migración pendiente) procesa igual, solo que sin dedupe/rate-limit.
+- **P2 — historial acotado**: `whatsapp-agent` envía al modelo solo los últimos 30 mensajes (`MAX_HISTORY_MESSAGES`); el historial completo sigue en BD. (`chat-with-hero` ya recortaba a 20.)
+- **P4 — alertas**: `alertTeam` en los catch de `whatsapp-agent` y `chat-with-hero` — los dos agentes ya no fallan en silencio hacia el equipo (antes solo `console.error`).
+- **P5 — rate limit**: máx. 20 mensajes/teléfono/hora en `whatsapp-agent` (reutiliza la tabla del dedupe): justo en el límite avisa UNA vez; por encima, silencio total. Protege el coste de la API ante spam/bucles.
+- **⏳ PENDIENTE al cierre de sesión (en este orden):** (1) aplicar `supabase/sql/2026-07-05-team-y-webhook.sql` (columnas `agent_*` + tabla `wa_processed_messages` con RLS DENY); (2) re-ejecutar el bloque **CRON 2** de `setup-crons.sql` (nueva Op 4: purga de wamids >7 días, guardada con `to_regclass` para no romper si falta la tabla); (3) push a `main` (deploy automático de PWA + funciones); (4) validar: mensaje WhatsApp de prueba (dedupe visible en logs), sección Mi Equipo en la PWA, y un error forzado si se quiere ver la alerta.
+
 ### 2 julio 2026 — Higiene de secretos (B12) + wipe de datos de producción ✅
 
 **Higiene de secretos (tarea de B12) — COMPLETADA:**
