@@ -227,7 +227,23 @@ src/
 
 ## Registro de sesiones
 
-### 6 julio 2026 — Paquete pre-lanzamiento: P6.1/P6.4 + P7.1/P7.2/P7.3/P7.5 + límite de slots — ⏳ PENDIENTE: aplicar SQL + re-ejecutar crons + push
+### 6 julio 2026 (2ª parte) — Rotación de HEROHOME_API_KEY + mapa de apps de Meta ✅
+
+**Incidente (detectado investigando otra cosa):** los 3 crons HTTP llevaban en **401 desde el 5 jul ~22:00 UTC** — la key pegada en el `cron.alter_job` del arreglo del día 5 NO era la `HEROHOME_API_KEY` real (36 chars vs 67 del secret), y la migración de `app_config` copió fielmente esa key errónea. Silencioso: un 401 de auth no dispara `alertTeam` (2º argumento para activar Healthchecks, aún pendiente). Diagnóstico vía función temporal `debug-meta` (huella SHA del secret vs probe; ya BORRADA de prod y local).
+
+**Rotación ejecutada (los valores viejos quedan inservibles):**
+- Nueva `HEROHOME_API_KEY` (67 chars, `hh_…`) generada y cargada vía `supabase secrets set` + **redeploy de las 21 funciones** vía CLI.
+- `app_config.herohome_api_key` actualizada (verificado `coincide=true` vía MCP) → los crons quedan arreglados sin tocar su registro (leen la tabla en cada tick).
+- **Make Esc. 2**: cabecera `x-api-key` actualizada por el usuario (escenario aún inactivo).
+- Verificado e2e: `post-visit-followup` con la key nueva → HTTP 200.
+- ⚠️ Lección: tras cualquier cambio de key/crons, verificar SIEMPRE una ejecución real (logs) — el 5 jul solo se verificó la ausencia de placeholder, no un 200.
+
+**Mapa de objetos de Meta (aclarado con Graph API, para no volver a dudar):**
+- App **"Agente Herohome"** (`1336895958329284`): la de PRODUCCIÓN — dueña del token de sistema (usuario "Agente Herohome", scopes whatsapp_*), del webhook y del `META_APP_SECRET`. **NO BORRAR NUNCA.**
+- **WABA "Herohome"** (`1424979468699232`, en business.facebook.com): dueño del número (+34 630 27 13 42) y de las **9 plantillas aprobadas** (bienvenida_pc, visita_confirmada/cancelada, recordatorio_visita, post_visita, oferta_aceptada/rechazada, contraoferta + la vieja herohome_contacto_idealista). Las plantillas pertenecen al WABA, NO a ninguna app.
+- App **"Herohome app"** (`1621658625564005`): huérfana (sin empresa, tipo Ninguno, invisible para el token de producción) → **borrable/archivable** (decisión del usuario).
+
+### 6 julio 2026 — Paquete pre-lanzamiento: P6.1/P6.4 + P7.1/P7.2/P7.3/P7.5 + límite de slots — ✅ DESPLEGADO (SQL aplicados, crons re-registrados leyendo app_config, push con Deploy y Tests en verde)
 
 - **P7.3 — versiones pineadas:** las 19 Edge Functions importan `supabase-js@2.110.0` exacto (antes `@2` flotante: cada deploy podía traer una minor nueva sin avisar). 2.110.0 = lo que resolvía `@2` ese día (cambio de comportamiento: cero).
 - **Límite de slots:** `whatsapp-agent` trunca el resultado de `get_available_slots` a los **15 horarios más próximos** (`MAX_SLOTS_OFFERED`, helper `limitSlots`) manteniendo la agrupación por día; si hay más, añade `note` para que Hero se lo diga al comprador (regla añadida al prompt). La PWA y `chat-with-hero` no se ven afectados.
