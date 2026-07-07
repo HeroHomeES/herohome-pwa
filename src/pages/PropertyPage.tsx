@@ -3,6 +3,7 @@ import { useBlocker } from 'react-router-dom'
 import { useProperty } from '../hooks/useProperty'
 import { Toggle } from '../components/Toggle'
 import { Toast, useToast } from '../components/Toast'
+import { IconHome, IconAlertTriangle } from '../components/icons'
 import type { Property } from '../lib/types'
 
 // ─── Draft type (all inputs as strings for native inputs) ────────────────────
@@ -79,14 +80,14 @@ function validate(d: Draft): string[] {
 
 // ─── Shared input styles ─────────────────────────────────────────────────────
 
-const inputCls = 'w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-[#1A1A1A] bg-white focus:outline-none focus:ring-2 focus:ring-[#2E5EA1] focus:border-transparent'
+const inputCls = 'w-full rounded-[7px] border border-line px-3 py-2 text-[13px] text-ink bg-white placeholder-slate-light focus:outline-none focus:border-violet focus:ring-[3px] focus:ring-violet/12'
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
 
 function FormSection({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="bg-[#F8F9FA] rounded-2xl p-5">
-      <h2 className="text-base font-semibold text-[#1A1A1A] mb-4">{title}</h2>
+    <div className="bg-white border border-line rounded-xl p-5">
+      <h2 className="text-[11px] font-bold uppercase tracking-[0.14em] text-violet mb-4">{title}</h2>
       <div className="grid grid-cols-2 gap-x-4 gap-y-4">
         {children}
       </div>
@@ -97,7 +98,7 @@ function FormSection({ title, children }: { title: string; children: React.React
 function Field({ label, children, full }: { label: string; children: React.ReactNode; full?: boolean }) {
   return (
     <div className={`flex flex-col gap-1 ${full ? 'col-span-2' : ''}`}>
-      <label className="text-xs font-medium text-[#666666] uppercase tracking-wide">{label}</label>
+      <label className="text-[11px] font-semibold text-slate-light tracking-[0.02em]">{label}</label>
       {children}
     </div>
   )
@@ -118,7 +119,7 @@ function SelectField({ value, onChange, options, placeholder }: {
 }
 
 // Valor de solo lectura (honorarios: vienen de Salesforce o los calcula la BD)
-const readOnlyCls = 'w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-[#666666] bg-gray-50'
+const readOnlyCls = 'w-full rounded-[7px] border border-line px-3 py-2 text-[13px] text-slate bg-surface'
 
 function ReadOnlyValue({ children }: { children: React.ReactNode }) {
   return <div className={readOnlyCls}>{children}</div>
@@ -132,10 +133,40 @@ const pct = (v: number | null) =>
 function ToggleField({ label, checked, onChange }: { label: string; checked: boolean | null; onChange: (v: boolean) => void }) {
   return (
     <div className="flex flex-col gap-1">
-      <span className="text-xs font-medium text-[#666666] uppercase tracking-wide">{label}</span>
+      <span className="text-[11px] font-semibold text-slate-light tracking-[0.02em]">{label}</span>
       <div className="flex items-center gap-2 pt-1">
         <Toggle checked={checked} onChange={onChange} />
-        <span className="text-sm text-[#1A1A1A]">{checked ? 'Sí' : 'No'}</span>
+        <span className="text-sm text-ink">{checked ? 'Sí' : 'No'}</span>
+      </div>
+    </div>
+  )
+}
+
+// ─── Property summary card ───────────────────────────────────────────────────
+
+function PropertySummary({ property }: { property: Property }) {
+  const specs = [
+    property.rooms != null ? `${property.rooms} hab.` : null,
+    property.built_area != null ? `${property.built_area} m²` : null,
+    property.bathrooms != null ? `${property.bathrooms} baño${property.bathrooms !== 1 ? 's' : ''}` : null,
+    property.has_elevator ? 'Ascensor' : null,
+  ].filter(Boolean)
+
+  const address = [property.street, property.city].filter(Boolean).join(' · ')
+
+  return (
+    <div className="bg-white border border-line rounded-xl overflow-hidden">
+      <div className="h-24 bg-gradient-to-br from-ink-2 via-ink to-violet-deep flex items-start justify-end p-3">
+        <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-white/10 text-[#F8FAFC] border border-white/15">
+          En venta
+        </span>
+      </div>
+      <div className="px-5 py-4">
+        <p className="text-[22px] font-bold tracking-[-0.03em] text-ink">{eur(property.sales_price)}</p>
+        {address && <p className="text-xs text-slate-light mt-0.5">{address}</p>}
+        {specs.length > 0 && (
+          <p className="text-xs font-medium text-slate mt-1.5">{specs.join(' · ')}</p>
+        )}
       </div>
     </div>
   )
@@ -143,16 +174,16 @@ function ToggleField({ label, checked, onChange }: { label: string; checked: boo
 
 function Skeleton() {
   return (
-    <div className="flex flex-col gap-4 p-6 animate-pulse">
-      <div className="h-7 w-40 bg-gray-200 rounded-lg" />
+    <div className="flex flex-col gap-4 p-4 animate-pulse">
+      <div className="h-7 w-40 bg-line-subtle rounded-lg" />
       {[0, 1, 2, 3].map((i) => (
-        <div key={i} className="bg-[#F8F9FA] rounded-2xl p-5">
-          <div className="h-4 w-28 bg-gray-200 rounded mb-4" />
+        <div key={i} className="bg-white border border-line rounded-xl p-5">
+          <div className="h-4 w-28 bg-line-subtle rounded mb-4" />
           <div className="grid grid-cols-2 gap-4">
             {[0, 1, 2, 3].map((j) => (
               <div key={j} className="flex flex-col gap-1">
-                <div className="h-3 w-20 bg-gray-200 rounded" />
-                <div className="h-8 bg-gray-200 rounded-lg" />
+                <div className="h-3 w-20 bg-line-subtle rounded" />
+                <div className="h-8 bg-line-subtle rounded-[7px]" />
               </div>
             ))}
           </div>
@@ -207,8 +238,13 @@ function PropertyForm({ property, saveProperty }: {
   }
 
   return (
-    <div className="p-6 flex flex-col gap-4 max-w-2xl mx-auto pb-24">
-      <h1 className="text-xl font-bold text-[#1A1A1A]">Mi Vivienda</h1>
+    <div className="p-4 flex flex-col gap-4 max-w-2xl mx-auto pb-24">
+      <div className="pt-1">
+        <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-violet">Mi vivienda</p>
+        <h1 className="text-2xl font-semibold tracking-[-0.025em] text-ink mt-0.5">Ficha y edición</h1>
+      </div>
+
+      <PropertySummary property={property} />
 
       {/* Ubicación */}
       <FormSection title="Ubicación">
@@ -304,8 +340,8 @@ function PropertyForm({ property, saveProperty }: {
       </FormSection>
 
       {/* Descripción */}
-      <div className="bg-[#F8F9FA] rounded-2xl p-5">
-        <h2 className="text-base font-semibold text-[#1A1A1A] mb-4">Descripción</h2>
+      <div className="bg-white border border-line rounded-xl p-5">
+        <h2 className="text-[11px] font-bold uppercase tracking-[0.14em] text-violet mb-4">Descripción</h2>
         <textarea
           rows={5}
           className={`${inputCls} resize-none`}
@@ -317,19 +353,19 @@ function PropertyForm({ property, saveProperty }: {
 
       {/* Errores de validación */}
       {validationErrors.length > 0 && (
-        <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex flex-col gap-1">
+        <div className="bg-error-bg border border-[#FBBFBF] rounded-xl p-4 flex flex-col gap-1">
           {validationErrors.map((e) => (
-            <p key={e} className="text-sm text-[#DC3545]">• {e}</p>
+            <p key={e} className="text-sm text-error">• {e}</p>
           ))}
         </div>
       )}
 
-      {/* Botón guardar (sticky en móvil) */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-6 py-4 z-20">
+      {/* Botón guardar (sticky, por encima de la tab bar) */}
+      <div className="fixed bottom-[calc(60px+env(safe-area-inset-bottom))] left-0 right-0 bg-white border-t border-line px-4 py-3 z-20">
         <button
           onClick={handleSave}
           disabled={!isDirty || saving}
-          className="w-full max-w-2xl mx-auto block bg-[#2E5EA1] text-white font-semibold py-3 rounded-xl text-base disabled:opacity-40 disabled:cursor-not-allowed active:scale-95 transition-transform"
+          className="w-full max-w-2xl mx-auto block bg-violet hover:bg-violet-dark text-white font-medium py-3 rounded-[7px] text-sm disabled:opacity-40 disabled:cursor-not-allowed active:scale-[0.98] transition"
         >
           {saving ? 'Guardando...' : 'Guardar cambios'}
         </button>
@@ -350,9 +386,11 @@ export default function PropertyPage() {
   if (error === 'no_property' || !property) {
     return (
       <div className="p-6 flex flex-col items-center justify-center min-h-[60vh] text-center">
-        <span className="text-5xl mb-4">🏠</span>
-        <h2 className="text-lg font-semibold text-[#1A1A1A] mb-2">No hay vivienda registrada</h2>
-        <p className="text-sm text-[#666666]">Todavía no tienes ninguna vivienda asociada a tu cuenta. Contacta con tu agente Herohome.</p>
+        <span className="w-12 h-12 rounded-full bg-violet-light text-violet-dark flex items-center justify-center mb-4">
+          <IconHome size={22} />
+        </span>
+        <h2 className="text-lg font-semibold text-ink mb-2">No hay vivienda registrada</h2>
+        <p className="text-sm text-slate">Todavía no tienes ninguna vivienda asociada a tu cuenta. Contacta con tu agente Herohome.</p>
       </div>
     )
   }
@@ -360,9 +398,11 @@ export default function PropertyPage() {
   if (error) {
     return (
       <div className="p-6 flex flex-col items-center justify-center min-h-[60vh] text-center">
-        <span className="text-5xl mb-4">⚠️</span>
-        <h2 className="text-lg font-semibold text-[#1A1A1A] mb-2">Error al cargar la vivienda</h2>
-        <p className="text-sm text-[#666666]">{error}</p>
+        <span className="w-12 h-12 rounded-full bg-error-bg text-error flex items-center justify-center mb-4">
+          <IconAlertTriangle size={22} />
+        </span>
+        <h2 className="text-lg font-semibold text-ink mb-2">Error al cargar la vivienda</h2>
+        <p className="text-sm text-slate">{error}</p>
       </div>
     )
   }

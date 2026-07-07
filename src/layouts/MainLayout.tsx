@@ -1,17 +1,29 @@
 import { useState } from 'react'
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
-import { useAuth } from '../context/AuthContext'
 import { useNotifications } from '../hooks/useNotifications'
+import { HerohomeLogo } from '../components/HerohomeLogo'
+import {
+  IconMessageCircle, IconHome, IconCalendar, IconTag, IconUsers, IconBell,
+  IconCheckCircle, IconXCircle, IconEuro, IconRefresh,
+} from '../components/icons'
 import type { AppNotification } from '../lib/types'
 
 // ─── Notification config ──────────────────────────────────────────────────────
 
-const NOTIF_ICON: Record<string, string> = {
-  new_visit_request: '📅',
-  visit_confirmed:   '✅',
-  visit_canceled:    '❌',
-  new_offer:         '💰',
-  offer_updated:     '🔄',
+const NOTIF_ICON: Record<string, React.ReactNode> = {
+  new_visit_request: <IconCalendar size={18} />,
+  visit_confirmed:   <IconCheckCircle size={18} />,
+  visit_canceled:    <IconXCircle size={18} />,
+  new_offer:         <IconEuro size={18} />,
+  offer_updated:     <IconRefresh size={18} />,
+}
+
+const NOTIF_TINT: Record<string, string> = {
+  new_visit_request: 'bg-violet-light text-violet-dark',
+  visit_confirmed:   'bg-teal-light text-teal',
+  visit_canceled:    'bg-error-bg text-error',
+  new_offer:         'bg-violet-light text-violet-dark',
+  offer_updated:     'bg-violet-light text-violet-dark',
 }
 
 const NOTIF_LABEL: Record<string, string> = {
@@ -41,29 +53,21 @@ function timeAgo(iso: string | null) {
   return `hace ${Math.floor(h / 24)} d`
 }
 
-// ─── Nav items ────────────────────────────────────────────────────────────────
+// ─── Tab bar (4 secciones — DESIGN.md v3) ─────────────────────────────────────
 
-const navItems = [
-  { to: '/',          label: 'Inicio',        icon: '🏠', end: true  },
-  { to: '/property',  label: 'Mi Vivienda',   icon: '🏡', end: false },
-  { to: '/calendar',  label: 'Mi Calendario', icon: '📅', end: false },
-  { to: '/offers',    label: 'Mis Ofertas',   icon: '💼', end: false },
-  { to: '/team',      label: 'Mi Equipo',     icon: '👥', end: false },
+const tabItems = [
+  { to: '/',         label: 'Hero',     icon: IconMessageCircle, end: true  },
+  { to: '/property', label: 'Vivienda', icon: IconHome,          end: false },
+  { to: '/calendar', label: 'Visitas',  icon: IconCalendar,      end: false },
+  { to: '/offers',   label: 'Ofertas',  icon: IconTag,           end: false },
 ]
 
 // ─── Layout ───────────────────────────────────────────────────────────────────
 
 export default function MainLayout() {
-  const { user, signOut } = useAuth()
   const navigate = useNavigate()
-  const [sidebarOpen, setSidebarOpen] = useState(false)
   const [notifOpen, setNotifOpen] = useState(false)
   const { notifications, unreadCount, markAsRead, markAllAsRead } = useNotifications()
-
-  const handleSignOut = async () => {
-    await signOut()
-    navigate('/login')
-  }
 
   const handleNotifClick = async (notif: AppNotification) => {
     await markAsRead(notif.id)
@@ -71,44 +75,38 @@ export default function MainLayout() {
     navigate(NOTIF_ROUTE[notif.type] ?? '/')
   }
 
-  const userName = user?.user_metadata?.first_name
-    ?? user?.email?.split('@')[0]
-    ?? 'Usuario'
-
   return (
-    <div className="min-h-screen bg-white flex flex-col">
-      {/* Header */}
-      <header className="fixed top-0 left-0 right-0 z-30 bg-white border-b border-gray-200 flex items-center justify-between px-4 h-14">
-        <button
-          onClick={() => setSidebarOpen(true)}
-          className="p-2 rounded-lg text-[#1A1A1A] hover:bg-gray-100 transition-colors"
-          aria-label="Abrir menú"
-        >
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <line x1="3" y1="6" x2="21" y2="6" />
-            <line x1="3" y1="12" x2="21" y2="12" />
-            <line x1="3" y1="18" x2="21" y2="18" />
-          </svg>
-        </button>
+    <div className="min-h-screen bg-surface flex flex-col">
+      {/* Header — 52px, fondo oscuro (DESIGN.md: navbar #111827) */}
+      <header className="fixed top-0 left-0 right-0 z-30 bg-navbar flex items-center justify-between px-4 h-[52px]">
+        <NavLink to="/" aria-label="Inicio">
+          <HerohomeLogo size={22} dark />
+        </NavLink>
 
-        <span className="font-bold text-[#2E5EA1] text-lg">Herohome</span>
+        <div className="flex items-center gap-1">
+          <NavLink
+            to="/team"
+            aria-label="Mi Equipo"
+            className={({ isActive }) =>
+              `p-2 rounded-lg transition-colors ${isActive ? 'text-violet' : 'text-white/70 hover:text-white'}`
+            }
+          >
+            <IconUsers size={20} />
+          </NavLink>
 
-        {/* Bell button */}
-        <button
-          onClick={() => setNotifOpen((o) => !o)}
-          className="relative p-2 rounded-lg text-[#1A1A1A] hover:bg-gray-100 transition-colors"
-          aria-label="Notificaciones"
-        >
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
-            <path d="M13.73 21a2 2 0 0 1-3.46 0" />
-          </svg>
-          {unreadCount > 0 && (
-            <span className="absolute top-1 right-1 min-w-[16px] h-4 bg-[#DC3545] text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1">
-              {unreadCount > 9 ? '9+' : unreadCount}
-            </span>
-          )}
-        </button>
+          <button
+            onClick={() => setNotifOpen((o) => !o)}
+            className="relative p-2 rounded-lg text-white/70 hover:text-white transition-colors"
+            aria-label="Notificaciones"
+          >
+            <IconBell size={20} />
+            {unreadCount > 0 && (
+              <span className="absolute top-1 right-1 min-w-4 h-4 bg-violet text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1 border-2 border-navbar box-content">
+                {unreadCount > 9 ? '9+' : unreadCount}
+              </span>
+            )}
+          </button>
+        </div>
       </header>
 
       {/* Notification overlay */}
@@ -118,13 +116,13 @@ export default function MainLayout() {
 
       {/* Notification panel */}
       {notifOpen && (
-        <div className="fixed top-14 right-0 left-0 sm:left-auto sm:w-80 z-[36] bg-white border-b sm:border sm:rounded-b-2xl sm:mr-2 shadow-xl max-h-[70vh] flex flex-col">
-          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
-            <span className="text-sm font-semibold text-[#1A1A1A]">Notificaciones</span>
+        <div className="fixed top-[52px] right-0 left-0 sm:left-auto sm:w-80 z-[36] bg-white border-b border-line sm:border sm:rounded-b-xl sm:mr-2 max-h-[70vh] flex flex-col">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-line-subtle">
+            <span className="text-sm font-semibold text-ink">Notificaciones</span>
             {unreadCount > 0 && (
               <button
                 onClick={markAllAsRead}
-                className="text-xs text-[#2E5EA1] font-medium"
+                className="text-xs text-violet font-medium"
               >
                 Marcar todo como leído
               </button>
@@ -134,23 +132,25 @@ export default function MainLayout() {
           <div className="overflow-y-auto flex-1">
             {notifications.length === 0 ? (
               <div className="px-4 py-8 text-center">
-                <p className="text-sm text-[#666666]">No tienes notificaciones nuevas</p>
+                <p className="text-sm text-slate">No tienes notificaciones nuevas</p>
               </div>
             ) : (
               notifications.map((notif) => (
                 <button
                   key={notif.id}
                   onClick={() => handleNotifClick(notif)}
-                  className="w-full flex items-start gap-3 px-4 py-3 hover:bg-gray-50 transition-colors border-b border-gray-50 text-left"
+                  className="w-full flex items-start gap-3 px-4 py-3 hover:bg-surface transition-colors border-b border-line-subtle text-left"
                 >
-                  <span className="text-xl shrink-0 mt-0.5">{NOTIF_ICON[notif.type]}</span>
+                  <span className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${NOTIF_TINT[notif.type] ?? 'bg-violet-light text-violet-dark'}`}>
+                    {NOTIF_ICON[notif.type]}
+                  </span>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-[#1A1A1A] leading-tight">
+                    <p className="text-sm font-medium text-ink leading-tight">
                       {NOTIF_LABEL[notif.type]}
                     </p>
-                    <p className="text-xs text-[#666666] mt-0.5">{timeAgo(notif.created_at)}</p>
+                    <p className="text-xs text-slate-light mt-0.5">{timeAgo(notif.created_at)}</p>
                   </div>
-                  <span className="w-2 h-2 rounded-full bg-[#2E5EA1] shrink-0 mt-1.5" />
+                  <span className="w-2 h-2 rounded-full bg-violet shrink-0 mt-1.5" />
                 </button>
               ))
             )}
@@ -158,58 +158,30 @@ export default function MainLayout() {
         </div>
       )}
 
-      {/* Sidebar overlay */}
-      {sidebarOpen && (
-        <div className="fixed inset-0 z-40 bg-black/40" onClick={() => setSidebarOpen(false)} />
-      )}
+      <main className="flex-1 pt-[52px] pb-[calc(60px+env(safe-area-inset-bottom))]">
+        <Outlet />
+      </main>
 
-      {/* Sidebar */}
-      <aside
-        className={`fixed top-0 left-0 z-50 h-full w-72 bg-white shadow-xl flex flex-col transition-transform duration-300 ${
-          sidebarOpen ? 'translate-x-0' : '-translate-x-full'
-        }`}
-      >
-        <div className="bg-[#2E5EA1] px-6 pt-10 pb-6">
-          <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center text-white text-xl font-bold mb-3">
-            {userName[0].toUpperCase()}
-          </div>
-          <p className="text-white font-semibold text-base">{userName}</p>
-          <p className="text-white/70 text-sm">{user?.email}</p>
-        </div>
-
-        <nav className="flex-1 px-4 py-6 flex flex-col gap-1">
-          {navItems.map(({ to, label, icon, end }) => (
+      {/* Bottom tab bar — 60px + safe area (iPhone standalone) */}
+      <nav className="fixed bottom-0 left-0 right-0 z-30 bg-white border-t border-line pb-[env(safe-area-inset-bottom)]">
+        <div className="h-[60px] flex justify-around items-center">
+          {tabItems.map(({ to, label, icon: Icon, end }) => (
             <NavLink
               key={to}
               to={to}
               end={end}
-              onClick={() => setSidebarOpen(false)}
               className={({ isActive }) =>
-                `flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-colors ${
-                  isActive ? 'bg-[#2E5EA1]/10 text-[#2E5EA1]' : 'text-[#1A1A1A] hover:bg-gray-100'
+                `flex flex-col items-center gap-0.5 w-[68px] text-[10px] font-medium transition-colors ${
+                  isActive ? 'text-violet' : 'text-slate-light'
                 }`
               }
             >
-              <span className="text-lg">{icon}</span>
+              <Icon size={20} />
               {label}
             </NavLink>
           ))}
-        </nav>
-
-        <div className="px-4 pb-8">
-          <button
-            onClick={handleSignOut}
-            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-[#DC3545] hover:bg-red-50 transition-colors"
-          >
-            <span className="text-lg">🚪</span>
-            Cerrar sesión
-          </button>
         </div>
-      </aside>
-
-      <main className="flex-1 mt-14">
-        <Outlet />
-      </main>
+      </nav>
     </div>
   )
 }

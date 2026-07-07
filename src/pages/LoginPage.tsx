@@ -2,6 +2,8 @@ import { useState, type FormEvent } from 'react'
 import { Navigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabaseClient'
 import { useAuth } from '../context/AuthContext'
+import { HerohomeSymbol } from '../components/HerohomeLogo'
+import { IconMail } from '../components/icons'
 
 const NOT_A_CLIENT_ERROR =
   'Su email no aparece como cliente de Herohome. Póngase en contacto con nosotros en hola@herohome.es'
@@ -60,26 +62,35 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-white flex flex-col items-center justify-center px-6">
-      <div className="w-full max-w-sm">
+    <div className="min-h-screen bg-surface flex flex-col items-center justify-center px-6 relative">
+      {/* Gradiente sutil superior (estética Stripe) */}
+      <div
+        className="absolute inset-x-0 top-0 h-[45%] pointer-events-none"
+        style={{ background: 'radial-gradient(80% 100% at 50% 0%, rgba(91,92,255,0.09) 0%, rgba(91,92,255,0) 100%)' }}
+      />
+
+      <div className="w-full max-w-sm relative">
         {/* Logo */}
-        <div className="mb-10 text-center">
-          <span className="text-3xl font-bold text-[#2E5EA1]">Herohome</span>
-          <p className="mt-2 text-sm text-[#666666]">Portal del vendedor</p>
+        <div className="mb-10 flex flex-col items-center text-center">
+          <HerohomeSymbol size={60} />
+          <span className="mt-4 text-[22px] font-semibold tracking-[-0.03em] text-ink">Herohome</span>
+          <p className="mt-1.5 text-sm text-slate">Portal del vendedor</p>
         </div>
 
         {sent ? (
-          <div className="bg-[#F8F9FA] rounded-2xl p-6 text-center">
-            <div className="text-4xl mb-4">📧</div>
-            <h2 className="text-lg font-semibold text-[#1A1A1A] mb-2">Revisa tu email</h2>
-            <p className="text-sm text-[#666666]">
-              Hemos enviado un enlace de acceso a <strong>{email}</strong>. Pulsa el enlace para entrar.
+          <div className="bg-white border border-line rounded-xl p-6 text-center">
+            <span className="mx-auto w-12 h-12 rounded-full bg-violet-light text-violet-dark flex items-center justify-center mb-4">
+              <IconMail size={22} />
+            </span>
+            <h2 className="text-lg font-semibold text-ink mb-2">Revisa tu email</h2>
+            <p className="text-sm text-slate leading-relaxed">
+              Hemos enviado un enlace de acceso a <strong className="text-ink">{email}</strong>. Pulsa el enlace para entrar.
             </p>
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-            <div className="flex flex-col gap-1">
-              <label htmlFor="email" className="text-sm font-medium text-[#1A1A1A]">
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="email" className="text-[11px] font-semibold text-slate tracking-[0.02em]">
                 Correo electrónico
               </label>
               <input
@@ -89,21 +100,25 @@ export default function LoginPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="tu@email.com"
-                className="w-full rounded-xl border border-gray-200 px-4 py-3 text-base text-[#1A1A1A] placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#2E5EA1] focus:border-transparent"
+                className="w-full rounded-[9px] border border-line px-4 py-3 text-base text-ink bg-white placeholder-slate-light focus:outline-none focus:border-violet focus:ring-[3px] focus:ring-violet/12"
               />
             </div>
 
             {error && (
-              <p className="text-sm text-[#DC3545]">{error}</p>
+              <p className="text-sm text-error">{error}</p>
             )}
 
             <button
               type="submit"
               disabled={submitting || !email}
-              className="w-full bg-[#2E5EA1] text-white font-semibold py-3 rounded-xl text-base disabled:opacity-50 disabled:cursor-not-allowed active:scale-95 transition-transform"
+              className="w-full bg-violet hover:bg-violet-dark text-white font-medium py-3 rounded-[9px] text-sm disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98] transition"
             >
               {submitting ? 'Enviando...' : 'Enviar enlace de acceso'}
             </button>
+
+            <p className="text-xs text-slate-light text-center leading-relaxed mt-2">
+              Sin contraseñas. Te enviamos un enlace<br />y entras con un toque.
+            </p>
           </form>
         )}
       </div>

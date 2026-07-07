@@ -11,12 +11,13 @@ export function Modal({ open, onClose, title, children }: ModalProps) {
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative bg-white rounded-2xl w-full max-w-sm flex flex-col">
-        <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-gray-100">
-          <h3 className="text-base font-semibold text-[#1A1A1A]">{title}</h3>
+      <div className="relative bg-white border border-line rounded-xl w-full max-w-sm flex flex-col">
+        <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-line-subtle">
+          <h3 className="text-base font-semibold tracking-[-0.02em] text-ink">{title}</h3>
           <button
             onClick={onClose}
-            className="text-[#666666] w-7 h-7 flex items-center justify-center rounded-full hover:bg-gray-100 text-lg leading-none"
+            className="text-slate w-7 h-7 flex items-center justify-center rounded-full hover:bg-surface text-lg leading-none"
+            aria-label="Cerrar"
           >
             ✕
           </button>

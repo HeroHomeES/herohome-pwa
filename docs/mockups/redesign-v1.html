@@ -1,0 +1,738 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Herohome PWA — Mockup rediseño v1</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink: #0A0E17;
+    --ink-2: #1C2333;
+    --violet: #5B5CFF;
+    --violet-dark: #3C3ECC;
+    --violet-light: #EEEEFF;
+    --teal: #0EA5A0;
+    --teal-light: #E0F7F6;
+    --surface: #F8FAFC;
+    --white: #FFFFFF;
+    --slate: #64748B;
+    --slate-light: #94A3B8;
+    --border: #E2E8F0;
+    --border-subtle: #F1F5F9;
+    --error: #E05353;
+    --error-bg: #FFF0F0;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    background: var(--ink);
+    color: #F8FAFC;
+    padding: 48px 32px 64px;
+  }
+
+  /* ── Page chrome (the mockup gallery itself) ─────────────────── */
+  .gallery-header { max-width: 1200px; margin: 0 auto 40px; }
+  .gallery-header .eyebrow {
+    font-size: 11px; font-weight: 700; letter-spacing: 0.14em;
+    text-transform: uppercase; color: var(--violet);
+    display: flex; align-items: center; gap: 10px; margin-bottom: 14px;
+  }
+  .gallery-header h1 {
+    font-size: 34px; font-weight: 600; letter-spacing: -0.03em; line-height: 1.1;
+  }
+  .gallery-header p {
+    margin-top: 12px; font-size: 15px; color: rgba(255,255,255,0.55);
+    max-width: 640px; line-height: 1.7;
+  }
+  .frames {
+    display: flex; flex-wrap: wrap; gap: 40px;
+    max-width: 1400px; margin: 0 auto; justify-content: center;
+  }
+  .frame-wrap { display: flex; flex-direction: column; gap: 14px; }
+  .frame-label {
+    font-size: 12px; font-weight: 500; color: rgba(255,255,255,0.55);
+    display: flex; align-items: baseline; gap: 8px;
+  }
+  .frame-label strong { font-size: 14px; font-weight: 600; color: #F8FAFC; letter-spacing: -0.01em; }
+
+  /* ── Phone frame ─────────────────────────────────────────────── */
+  .phone {
+    width: 375px; height: 760px; background: var(--surface);
+    border-radius: 28px; border: 1px solid rgba(255,255,255,0.14);
+    overflow: hidden; display: flex; flex-direction: column;
+    color: var(--ink); position: relative;
+  }
+
+  /* ── App navbar ──────────────────────────────────────────────── */
+  .navbar {
+    height: 52px; background: #111827; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 16px;
+  }
+  .navbar .lockup { display: flex; align-items: center; gap: 10px; }
+  .navbar .wordmark {
+    font-size: 15px; font-weight: 600; letter-spacing: -0.03em; color: #F8FAFC;
+  }
+  .navbar .bell { position: relative; display: flex; padding: 6px; }
+  .navbar .bell svg { stroke: rgba(255,255,255,0.7); }
+  .navbar .bell .dot {
+    position: absolute; top: 4px; right: 4px; width: 8px; height: 8px;
+    border-radius: 50%; background: var(--violet); border: 2px solid #111827;
+  }
+
+  /* ── Bottom tab bar ──────────────────────────────────────────── */
+  .tabbar {
+    height: 60px; background: var(--white); border-top: 1px solid var(--border);
+    flex-shrink: 0; display: flex; justify-content: space-around; align-items: center;
+  }
+  .tab {
+    display: flex; flex-direction: column; align-items: center; gap: 3px;
+    font-size: 10px; font-weight: 500; color: var(--slate-light); width: 68px;
+  }
+  .tab svg { stroke: var(--slate-light); }
+  .tab.active { color: var(--violet); }
+  .tab.active svg { stroke: var(--violet); }
+
+  .content { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
+  .scroll { flex: 1; overflow: hidden; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+
+  /* ── Shared typography ───────────────────────────────────────── */
+  .eyebrow {
+    font-size: 11px; font-weight: 700; letter-spacing: 0.14em;
+    text-transform: uppercase; color: var(--violet);
+  }
+  .page-title {
+    font-size: 24px; font-weight: 600; letter-spacing: -0.025em;
+    color: var(--ink); line-height: 1.2; margin-top: 2px;
+  }
+  .page-header { padding: 20px 16px 12px; }
+  .muted { color: var(--slate); font-size: 13px; }
+
+  /* ── Cards ───────────────────────────────────────────────────── */
+  .card {
+    background: var(--white); border: 1px solid var(--border);
+    border-radius: 12px; padding: 16px;
+  }
+
+  /* ── Buttons ─────────────────────────────────────────────────── */
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    padding: 10px 20px; border-radius: 7px; font-size: 13px; font-weight: 500;
+    letter-spacing: -0.01em; border: none; font-family: inherit; cursor: pointer;
+  }
+  .btn-primary { background: var(--violet); color: #fff; }
+  .btn-secondary { background: transparent; color: var(--ink); border: 1px solid var(--border); }
+  .btn-danger-ghost { background: transparent; color: var(--error); border: 1px solid var(--border); }
+  .btn-block { width: 100%; }
+
+  /* ── Badges ──────────────────────────────────────────────────── */
+  .badge {
+    display: inline-flex; padding: 3px 10px; border-radius: 20px;
+    font-size: 11px; font-weight: 600; letter-spacing: 0.02em;
+  }
+  .badge-teal { background: var(--teal-light); color: var(--teal); }
+  .badge-neutral { background: var(--surface); color: var(--slate); border: 1px solid var(--border); }
+  .badge-violet { background: var(--violet-light); color: var(--violet-dark); }
+  .badge-error { background: var(--error-bg); color: var(--error); }
+
+  /* ── Segmented control ───────────────────────────────────────── */
+  .segmented {
+    display: flex; background: var(--border-subtle); border-radius: 9px;
+    padding: 3px; margin: 0 16px 4px; gap: 2px;
+  }
+  .segment {
+    flex: 1; text-align: center; padding: 7px 4px; font-size: 12px; font-weight: 500;
+    color: var(--slate); border-radius: 7px; display: flex; align-items: center;
+    justify-content: center; gap: 5px;
+  }
+  .segment.active {
+    background: var(--white); color: var(--ink); border: 1px solid var(--border);
+    font-weight: 600;
+  }
+  .segment .count {
+    background: var(--violet); color: #fff; font-size: 10px; font-weight: 700;
+    border-radius: 10px; padding: 1px 6px;
+  }
+
+  /* ── Chat ────────────────────────────────────────────────────── */
+  .chat-day {
+    align-self: center; font-size: 11px; font-weight: 500; color: var(--slate-light);
+    padding: 2px 0;
+  }
+  .bubble-row { display: flex; gap: 8px; align-items: flex-end; }
+  .bubble-agent {
+    background: var(--white); border: 1px solid var(--border);
+    border-radius: 16px 16px 16px 4px; padding: 10px 14px;
+    font-size: 14px; line-height: 1.6; color: var(--ink); max-width: 270px;
+  }
+  .bubble-user {
+    background: var(--violet); color: #fff;
+    border-radius: 16px 16px 4px 16px; padding: 10px 14px;
+    font-size: 14px; line-height: 1.6; max-width: 260px;
+    margin-left: auto;
+  }
+  .hero-avatar {
+    width: 26px; height: 26px; border-radius: 50%; background: var(--violet);
+    flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+  }
+  .chips { display: flex; gap: 8px; flex-wrap: wrap; padding-left: 34px; }
+  .chip {
+    font-size: 12px; font-weight: 500; color: var(--violet-dark);
+    background: var(--violet-light); border: 1px solid #CACBFF;
+    border-radius: 20px; padding: 6px 12px;
+  }
+  .chat-input-bar {
+    border-top: 1px solid var(--border); background: var(--white);
+    padding: 10px 12px; display: flex; gap: 8px; align-items: center; flex-shrink: 0;
+  }
+  .chat-input {
+    flex: 1; border: 1px solid var(--border); border-radius: 20px;
+    padding: 10px 16px; font-size: 14px; color: var(--slate-light); background: var(--white);
+  }
+  .send-btn {
+    width: 38px; height: 38px; border-radius: 50%; background: var(--violet);
+    display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+  }
+
+  /* ── Visit card ──────────────────────────────────────────────── */
+  .visit-top { display: flex; justify-content: space-between; align-items: flex-start; }
+  .visit-date { font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--slate-light); }
+  .visit-time { font-size: 18px; font-weight: 600; letter-spacing: -0.02em; color: var(--ink); margin-top: 2px; }
+  .visit-meta { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--slate); margin-top: 8px; }
+  .visit-meta svg { stroke: var(--slate-light); flex-shrink: 0; }
+  .visit-actions { display: flex; gap: 8px; margin-top: 14px; }
+  .visit-actions .btn { flex: 1; }
+
+  /* ── Offers ──────────────────────────────────────────────────── */
+  .chain-header {
+    background: var(--violet-light); margin: -16px -16px 12px; padding: 8px 16px;
+    border-bottom: 1px solid #CACBFF; border-radius: 12px 12px 0 0;
+    font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
+    color: var(--violet-dark);
+  }
+  .offer-row { padding: 10px 0; border-bottom: 1px solid var(--border-subtle); }
+  .offer-row.past { opacity: 0.5; }
+  .offer-row:last-of-type { border-bottom: none; }
+  .offer-price { font-size: 20px; font-weight: 700; letter-spacing: -0.03em; color: var(--ink); }
+  .offer-who { font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--slate-light); }
+  .offer-date { font-size: 12px; color: var(--slate-light); margin-top: 2px; }
+
+  /* ── Property ────────────────────────────────────────────────── */
+  .prop-hero { border-radius: 12px; overflow: hidden; border: 1px solid var(--border); background: var(--white); }
+  .prop-img {
+    height: 110px; background: linear-gradient(135deg, #1C2333 0%, #0A0E17 60%, #181966 130%);
+    display: flex; align-items: flex-start; justify-content: flex-end; padding: 10px;
+  }
+  .prop-body { padding: 14px 16px 16px; }
+  .prop-price { font-size: 22px; font-weight: 700; letter-spacing: -0.03em; color: var(--ink); }
+  .prop-addr { font-size: 12px; color: var(--slate-light); margin-top: 2px; }
+  .prop-specs { font-size: 12px; font-weight: 500; color: var(--slate); margin-top: 6px; }
+
+  .form-label {
+    font-size: 11px; font-weight: 600; color: var(--slate-light);
+    letter-spacing: 0.02em; display: block; margin-bottom: 5px;
+  }
+  .input {
+    border: 1px solid var(--border); border-radius: 7px; padding: 9px 13px;
+    font-size: 13px; color: var(--ink); background: var(--white); width: 100%;
+    font-family: inherit;
+  }
+  .input.readonly { background: var(--surface); color: var(--slate); }
+  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .col-2 { grid-column: span 2; }
+  .section-eyebrow { margin-bottom: 10px; display: block; }
+  .sticky-save {
+    border-top: 1px solid var(--border); background: var(--white);
+    padding: 12px 16px; flex-shrink: 0;
+  }
+
+  /* ── Login ───────────────────────────────────────────────────── */
+  .login {
+    flex: 1; display: flex; flex-direction: column; align-items: center;
+    justify-content: center; padding: 32px; position: relative; background: var(--surface);
+  }
+  .login::before {
+    content: ''; position: absolute; inset: 0 0 55% 0;
+    background: radial-gradient(80% 100% at 50% 0%, rgba(91,92,255,0.09) 0%, rgba(91,92,255,0) 100%);
+    pointer-events: none;
+  }
+  .login-inner { width: 100%; max-width: 300px; display: flex; flex-direction: column; align-items: center; position: relative; }
+  .login-word { font-size: 22px; font-weight: 600; letter-spacing: -0.03em; color: var(--ink); margin-top: 18px; }
+  .login-sub { font-size: 13px; color: var(--slate); margin-top: 6px; margin-bottom: 32px; }
+  .login form-block { width: 100%; }
+  .login .input { padding: 12px 14px; font-size: 14px; border-radius: 9px; }
+  .login .btn { margin-top: 12px; padding: 12px; font-size: 14px; border-radius: 9px; }
+  .login-foot { margin-top: 28px; font-size: 12px; color: var(--slate-light); text-align: center; line-height: 1.6; }
+</style>
+</head>
+<body>
+
+<div class="gallery-header">
+  <div class="eyebrow">
+    <svg width="20" height="20" viewBox="0 0 44 44" fill="none">
+      <path d="M22 18 C20 12 15 8 13 7" stroke="#C4C4FF" stroke-width="2.2" stroke-linecap="round"/>
+      <path d="M25.5 23 C30 21 35 16 36 14" stroke="#A5A6FF" stroke-width="2.2" stroke-linecap="round"/>
+      <path d="M22 26 C21 31 19 36 19 38" stroke="#5B5CFF" stroke-width="2.2" stroke-linecap="round"/>
+      <circle cx="22" cy="22" r="4.5" fill="#5B5CFF"/>
+      <circle cx="13" cy="7" r="3.2" fill="#D0D0FF"/>
+      <circle cx="36" cy="14" r="2.4" fill="#A5A6FF"/>
+      <circle cx="19" cy="38" r="1.8" fill="#8081FF"/>
+    </svg>
+    Herohome · Rediseño PWA · Mockup v1
+  </div>
+  <h1>Cinco pantallas, misma app</h1>
+  <p>Aplicación del brandbook v2 (DESIGN.md): violeta #5B5CFF como único acento, Inter, bordes en lugar de sombras, iconos de trazo, barra de pestañas inferior y el logo nodo-hogar. Solo cambia la capa visual — ninguna funcionalidad se toca.</p>
+</div>
+
+<div class="frames">
+
+  <!-- ═══════════════ 1 · LOGIN ═══════════════ -->
+  <div class="frame-wrap">
+    <div class="frame-label"><strong>Login</strong> acceso con enlace mágico</div>
+    <div class="phone">
+      <div class="login">
+        <div class="login-inner">
+          <svg width="64" height="64" viewBox="0 0 44 44" fill="none">
+            <defs>
+              <linearGradient id="la1" x1="13" y1="7" x2="22" y2="22" gradientUnits="userSpaceOnUse">
+                <stop offset="0%" stop-color="#C4C4FF"/><stop offset="100%" stop-color="#5B5CFF"/>
+              </linearGradient>
+              <linearGradient id="la2" x1="36" y1="14" x2="22" y2="22" gradientUnits="userSpaceOnUse">
+                <stop offset="0%" stop-color="#A5A6FF"/><stop offset="100%" stop-color="#5B5CFF"/>
+              </linearGradient>
+              <linearGradient id="la3" x1="19" y1="38" x2="22" y2="22" gradientUnits="userSpaceOnUse">
+                <stop offset="0%" stop-color="#3C3ECC"/><stop offset="100%" stop-color="#5B5CFF"/>
+              </linearGradient>
+            </defs>
+            <path d="M22 18 C20 12 15 8 13 7" stroke="url(#la1)" stroke-width="2.2" stroke-linecap="round"/>
+            <path d="M25.5 23 C30 21 35 16 36 14" stroke="url(#la2)" stroke-width="2.2" stroke-linecap="round"/>
+            <path d="M22 26 C21 31 19 36 19 38" stroke="url(#la3)" stroke-width="2.2" stroke-linecap="round"/>
+            <circle cx="22" cy="22" r="4.5" fill="#5B5CFF"/>
+            <circle cx="13" cy="7" r="3.2" fill="#D0D0FF"/>
+            <circle cx="36" cy="14" r="2.4" fill="#A5A6FF"/>
+            <circle cx="19" cy="38" r="1.8" fill="#4344CC"/>
+          </svg>
+          <div class="login-word">Herohome</div>
+          <div class="login-sub">Portal del vendedor</div>
+          <div style="width:100%">
+            <label class="form-label" style="font-size:12px; color:#64748B">Correo electrónico</label>
+            <div class="input" style="color:#94A3B8">tu@email.com</div>
+            <button class="btn btn-primary btn-block">Enviar enlace de acceso</button>
+          </div>
+          <p class="login-foot">Sin contraseñas. Te enviamos un enlace<br>y entras con un toque.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════ 2 · CHAT HERO ═══════════════ -->
+  <div class="frame-wrap">
+    <div class="frame-label"><strong>Inicio</strong> chat con Hero</div>
+    <div class="phone">
+      <div class="navbar">
+        <div class="lockup">
+          <svg width="24" height="24" viewBox="0 0 44 44" fill="none">
+            <path d="M22 18 C20 12 15 8 13 7" stroke="rgba(255,255,255,0.85)" stroke-width="2.4" stroke-linecap="round"/>
+            <path d="M25.5 23 C30 21 35 16 36 14" stroke="rgba(255,255,255,0.6)" stroke-width="2.4" stroke-linecap="round"/>
+            <path d="M22 26 C21 31 19 36 19 38" stroke="rgba(255,255,255,0.4)" stroke-width="2.4" stroke-linecap="round"/>
+            <circle cx="22" cy="22" r="4.5" fill="#5B5CFF"/>
+            <circle cx="13" cy="7" r="3.2" fill="rgba(255,255,255,0.9)"/>
+            <circle cx="36" cy="14" r="2.4" fill="rgba(255,255,255,0.65)"/>
+            <circle cx="19" cy="38" r="1.8" fill="rgba(255,255,255,0.4)"/>
+          </svg>
+          <span class="wordmark">Herohome</span>
+        </div>
+        <div class="bell">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+          </svg>
+          <span class="dot"></span>
+        </div>
+      </div>
+      <div class="content">
+        <div class="scroll" style="gap:14px">
+          <span class="chat-day">Hoy, 7 de julio</span>
+          <div class="bubble-row">
+            <div class="hero-avatar">
+              <svg width="15" height="15" viewBox="0 0 44 44" fill="none">
+                <path d="M22 18 C20 12 15 8 13 7" stroke="rgba(255,255,255,0.9)" stroke-width="3" stroke-linecap="round"/>
+                <path d="M25.5 23 C30 21 35 16 36 14" stroke="rgba(255,255,255,0.65)" stroke-width="3" stroke-linecap="round"/>
+                <path d="M22 26 C21 31 19 36 19 38" stroke="rgba(255,255,255,0.4)" stroke-width="3" stroke-linecap="round"/>
+                <circle cx="22" cy="22" r="5" fill="white"/>
+              </svg>
+            </div>
+            <div class="bubble-agent">Buenos días, María. Tienes una visita pendiente de confirmar para el miércoles a las 18:00. ¿Quieres que la confirme?</div>
+          </div>
+          <div class="bubble-user">Sí, confírmala. ¿Cómo va la venta esta semana?</div>
+          <div class="bubble-row">
+            <div class="hero-avatar">
+              <svg width="15" height="15" viewBox="0 0 44 44" fill="none">
+                <path d="M22 18 C20 12 15 8 13 7" stroke="rgba(255,255,255,0.9)" stroke-width="3" stroke-linecap="round"/>
+                <path d="M25.5 23 C30 21 35 16 36 14" stroke="rgba(255,255,255,0.65)" stroke-width="3" stroke-linecap="round"/>
+                <path d="M22 26 C21 31 19 36 19 38" stroke="rgba(255,255,255,0.4)" stroke-width="3" stroke-linecap="round"/>
+                <circle cx="22" cy="22" r="5" fill="white"/>
+              </svg>
+            </div>
+            <div class="bubble-agent">Hecho — visita del miércoles confirmada, Carlos recibirá el aviso por WhatsApp.<br><br>Esta semana: 2 visitas realizadas y una oferta activa de 420.000 €. La tienes en la sección Ofertas.</div>
+          </div>
+          <div class="chips">
+            <span class="chip">Ver mis visitas</span>
+            <span class="chip">¿Tengo ofertas nuevas?</span>
+            <span class="chip">Bloquear un día</span>
+          </div>
+        </div>
+        <div class="chat-input-bar">
+          <div class="chat-input">Escribe un mensaje…</div>
+          <div class="send-btn">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+            </svg>
+          </div>
+        </div>
+      </div>
+      <div class="tabbar">
+        <div class="tab active">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+          Hero
+        </div>
+        <div class="tab">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+          Vivienda
+        </div>
+        <div class="tab">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+          Visitas
+        </div>
+        <div class="tab">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+          Ofertas
+        </div>
+        <div class="tab">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          Equipo
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════ 3 · CALENDARIO ═══════════════ -->
+  <div class="frame-wrap">
+    <div class="frame-label"><strong>Visitas</strong> pendientes de confirmar</div>
+    <div class="phone">
+      <div class="navbar">
+        <div class="lockup">
+          <svg width="24" height="24" viewBox="0 0 44 44" fill="none">
+            <path d="M22 18 C20 12 15 8 13 7" stroke="rgba(255,255,255,0.85)" stroke-width="2.4" stroke-linecap="round"/>
+            <path d="M25.5 23 C30 21 35 16 36 14" stroke="rgba(255,255,255,0.6)" stroke-width="2.4" stroke-linecap="round"/>
+            <path d="M22 26 C21 31 19 36 19 38" stroke="rgba(255,255,255,0.4)" stroke-width="2.4" stroke-linecap="round"/>
+            <circle cx="22" cy="22" r="4.5" fill="#5B5CFF"/>
+            <circle cx="13" cy="7" r="3.2" fill="rgba(255,255,255,0.9)"/>
+            <circle cx="36" cy="14" r="2.4" fill="rgba(255,255,255,0.65)"/>
+            <circle cx="19" cy="38" r="1.8" fill="rgba(255,255,255,0.4)"/>
+          </svg>
+          <span class="wordmark">Herohome</span>
+        </div>
+        <div class="bell">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+          </svg>
+        </div>
+      </div>
+      <div class="content">
+        <div class="page-header">
+          <span class="eyebrow">Mi calendario</span>
+          <h2 class="page-title">Visitas</h2>
+        </div>
+        <div class="segmented">
+          <div class="segment active">Pendientes <span class="count">2</span></div>
+          <div class="segment">Próximas</div>
+          <div class="segment">Disponibilidad</div>
+        </div>
+        <div class="scroll">
+          <div class="card">
+            <div class="visit-top">
+              <div>
+                <div class="visit-date">Miércoles, 9 de julio</div>
+                <div class="visit-time">18:00 – 19:00</div>
+              </div>
+              <span class="badge badge-neutral">Pendiente</span>
+            </div>
+            <div class="visit-meta">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+              Carlos Fernández
+            </div>
+            <div class="visit-meta" style="margin-top:4px">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+              +34 612 345 678
+            </div>
+            <div class="visit-actions">
+              <button class="btn btn-primary">Confirmar</button>
+              <button class="btn btn-danger-ghost">Cancelar</button>
+            </div>
+          </div>
+          <div class="card">
+            <div class="visit-top">
+              <div>
+                <div class="visit-date">Viernes, 11 de julio</div>
+                <div class="visit-time">10:00 – 11:00</div>
+              </div>
+              <span class="badge badge-neutral">Pendiente</span>
+            </div>
+            <div class="visit-meta">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+              Lucía Romero
+            </div>
+            <div class="visit-actions">
+              <button class="btn btn-primary">Confirmar</button>
+              <button class="btn btn-danger-ghost">Cancelar</button>
+            </div>
+          </div>
+          <div class="card" style="border-color:#99E6D8; background:#FDFFFE">
+            <div class="visit-top">
+              <div>
+                <div class="visit-date">Sábado, 12 de julio</div>
+                <div class="visit-time">12:00 – 13:00</div>
+              </div>
+              <span class="badge badge-teal">Confirmada</span>
+            </div>
+            <div class="visit-meta">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+              Roberto Díaz
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="tabbar">
+        <div class="tab">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+          Hero
+        </div>
+        <div class="tab">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+          Vivienda
+        </div>
+        <div class="tab active">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+          Visitas
+        </div>
+        <div class="tab">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+          Ofertas
+        </div>
+        <div class="tab">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          Equipo
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════ 4 · OFERTAS ═══════════════ -->
+  <div class="frame-wrap">
+    <div class="frame-label"><strong>Ofertas</strong> ronda de negociación</div>
+    <div class="phone">
+      <div class="navbar">
+        <div class="lockup">
+          <svg width="24" height="24" viewBox="0 0 44 44" fill="none">
+            <path d="M22 18 C20 12 15 8 13 7" stroke="rgba(255,255,255,0.85)" stroke-width="2.4" stroke-linecap="round"/>
+            <path d="M25.5 23 C30 21 35 16 36 14" stroke="rgba(255,255,255,0.6)" stroke-width="2.4" stroke-linecap="round"/>
+            <path d="M22 26 C21 31 19 36 19 38" stroke="rgba(255,255,255,0.4)" stroke-width="2.4" stroke-linecap="round"/>
+            <circle cx="22" cy="22" r="4.5" fill="#5B5CFF"/>
+            <circle cx="13" cy="7" r="3.2" fill="rgba(255,255,255,0.9)"/>
+            <circle cx="36" cy="14" r="2.4" fill="rgba(255,255,255,0.65)"/>
+            <circle cx="19" cy="38" r="1.8" fill="rgba(255,255,255,0.4)"/>
+          </svg>
+          <span class="wordmark">Herohome</span>
+        </div>
+        <div class="bell">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+          </svg>
+          <span class="dot"></span>
+        </div>
+      </div>
+      <div class="content">
+        <div class="page-header">
+          <span class="eyebrow">Mis ofertas</span>
+          <h2 class="page-title">1 negociación activa</h2>
+        </div>
+        <div class="scroll">
+          <div class="card">
+            <div class="chain-header">Ronda de negociación · 3 ofertas</div>
+            <div class="offer-row past">
+              <div class="offer-who">Oferta del comprador</div>
+              <div class="offer-price">400.000 €</div>
+              <div class="offer-date">Carlos Fernández · 2 jul</div>
+            </div>
+            <div class="offer-row past">
+              <div class="offer-who">Tu contraoferta</div>
+              <div class="offer-price">435.000 €</div>
+              <div class="offer-date">4 jul</div>
+            </div>
+            <div class="offer-row">
+              <div style="display:flex; justify-content:space-between; align-items:flex-start">
+                <div>
+                  <div class="offer-who">Oferta del comprador</div>
+                  <div class="offer-price">420.000 €</div>
+                  <div class="offer-date">Carlos Fernández · 6 jul</div>
+                </div>
+                <span class="badge badge-violet">Pendiente</span>
+              </div>
+            </div>
+            <div style="display:flex; flex-direction:column; gap:8px; margin-top:12px; padding-top:12px; border-top:1px solid var(--border-subtle)">
+              <div style="display:flex; gap:8px">
+                <button class="btn btn-primary" style="flex:1">Aceptar</button>
+                <button class="btn btn-danger-ghost" style="flex:1">Rechazar</button>
+              </div>
+              <button class="btn btn-secondary btn-block">Contraofertar</button>
+            </div>
+          </div>
+          <div class="card" style="opacity:0.75">
+            <div class="offer-row" style="padding:0; border:none">
+              <div style="display:flex; justify-content:space-between; align-items:flex-start">
+                <div>
+                  <div class="offer-who">Oferta del comprador</div>
+                  <div class="offer-price">380.000 €</div>
+                  <div class="offer-date">Ana Beltrán · 28 jun</div>
+                </div>
+                <span class="badge badge-error">Rechazada</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="tabbar">
+        <div class="tab">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+          Hero
+        </div>
+        <div class="tab">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+          Vivienda
+        </div>
+        <div class="tab">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+          Visitas
+        </div>
+        <div class="tab active">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+          Ofertas
+        </div>
+        <div class="tab">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          Equipo
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════ 5 · VIVIENDA ═══════════════ -->
+  <div class="frame-wrap">
+    <div class="frame-label"><strong>Vivienda</strong> ficha y edición</div>
+    <div class="phone">
+      <div class="navbar">
+        <div class="lockup">
+          <svg width="24" height="24" viewBox="0 0 44 44" fill="none">
+            <path d="M22 18 C20 12 15 8 13 7" stroke="rgba(255,255,255,0.85)" stroke-width="2.4" stroke-linecap="round"/>
+            <path d="M25.5 23 C30 21 35 16 36 14" stroke="rgba(255,255,255,0.6)" stroke-width="2.4" stroke-linecap="round"/>
+            <path d="M22 26 C21 31 19 36 19 38" stroke="rgba(255,255,255,0.4)" stroke-width="2.4" stroke-linecap="round"/>
+            <circle cx="22" cy="22" r="4.5" fill="#5B5CFF"/>
+            <circle cx="13" cy="7" r="3.2" fill="rgba(255,255,255,0.9)"/>
+            <circle cx="36" cy="14" r="2.4" fill="rgba(255,255,255,0.65)"/>
+            <circle cx="19" cy="38" r="1.8" fill="rgba(255,255,255,0.4)"/>
+          </svg>
+          <span class="wordmark">Herohome</span>
+        </div>
+        <div class="bell">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+          </svg>
+        </div>
+      </div>
+      <div class="content">
+        <div class="scroll" style="padding-top:20px">
+          <div class="prop-hero">
+            <div class="prop-img">
+              <span class="badge" style="background:rgba(255,255,255,0.12); color:#F8FAFC; backdrop-filter: blur(4px)">En venta</span>
+            </div>
+            <div class="prop-body">
+              <div class="prop-price">450.000 €</div>
+              <div class="prop-addr">C/ Gran Vía 48, 3ºA · Madrid</div>
+              <div class="prop-specs">3 hab. · 85 m² · 2 baños · Ascensor</div>
+            </div>
+          </div>
+          <div class="card">
+            <span class="eyebrow section-eyebrow">Ubicación</span>
+            <div class="form-grid">
+              <div class="col-2">
+                <label class="form-label">Calle</label>
+                <div class="input">C/ Gran Vía 48, 3ºA</div>
+              </div>
+              <div>
+                <label class="form-label">Ciudad</label>
+                <div class="input">Madrid</div>
+              </div>
+              <div>
+                <label class="form-label">Código postal</label>
+                <div class="input">28013</div>
+              </div>
+            </div>
+          </div>
+          <div class="card">
+            <span class="eyebrow section-eyebrow">Precios</span>
+            <div class="form-grid">
+              <div>
+                <label class="form-label">Precio de venta (€)</label>
+                <div class="input">450.000</div>
+              </div>
+              <div>
+                <label class="form-label">Oferta mínima (€)</label>
+                <div class="input">410.000</div>
+              </div>
+              <div>
+                <label class="form-label">Honorarios (%)</label>
+                <div class="input readonly">1 %</div>
+              </div>
+              <div>
+                <label class="form-label">Honorarios (€)</label>
+                <div class="input readonly">4.500 €</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="sticky-save">
+          <button class="btn btn-primary btn-block" style="padding:12px">Guardar cambios</button>
+        </div>
+      </div>
+      <div class="tabbar">
+        <div class="tab">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+          Hero
+        </div>
+        <div class="tab active">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+          Vivienda
+        </div>
+        <div class="tab">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+          Visitas
+        </div>
+        <div class="tab">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+          Ofertas
+        </div>
+        <div class="tab">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          Equipo
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>

@@ -1,13 +1,35 @@
 @import "tailwindcss";
 
+/* Tokens de marca — DESIGN.md v3.0 */
+@theme {
+  --color-ink: #0A0E17;
+  --color-ink-2: #1C2333;
+  --color-navbar: #111827;
+  --color-violet: #5B5CFF;
+  --color-violet-dark: #3C3ECC;
+  --color-violet-deep: #282999;
+  --color-violet-light: #EEEEFF;
+  --color-teal: #0EA5A0;
+  --color-teal-light: #E0F7F6;
+  --color-surface: #F8FAFC;
+  --color-slate: #64748B;
+  --color-slate-light: #94A3B8;
+  --color-line: #E2E8F0;
+  --color-line-subtle: #F1F5F9;
+  --color-error: #E05353;
+  --color-error-bg: #FFF0F0;
+
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
 * {
   box-sizing: border-box;
 }
 
 body {
-  font-family: 'Inter', system-ui, -apple-system, sans-serif;
-  color: #1A1A1A;
-  background: #ffffff;
+  font-family: var(--font-sans);
+  color: #0A0E17;
+  background: #F8FAFC;
   margin: 0;
   padding: 0;
   -webkit-font-smoothing: antialiased;

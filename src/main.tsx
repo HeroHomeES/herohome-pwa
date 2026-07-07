@@ -16,7 +16,7 @@ const TeamPage = lazy(() => import('./pages/TeamPage'))
 
 const spinner = (
   <div className="min-h-screen flex items-center justify-center">
-    <div className="w-8 h-8 border-4 border-[#2E5EA1] border-t-transparent rounded-full animate-spin" />
+    <div className="w-8 h-8 border-4 border-violet border-t-transparent rounded-full animate-spin" />
   </div>
 )
 
