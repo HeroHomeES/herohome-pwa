@@ -227,7 +227,10 @@ src/
 
 ## Registro de sesiones
 
-### 7 julio 2026 (2ª parte) — B8 v1: Dashboard de Operaciones (admin.herohome.es) 🛠️ (pendiente: SQL + usuario admin + proyecto Vercel + push)
+### 7 julio 2026 (2ª parte) — B8 v1: Dashboard de Operaciones (admin.herohome.es) ✅ EN PRODUCCIÓN
+
+**Desplegado y verificado e2e por el usuario.** SQL aplicado, usuario admin `hola@herohome.es` creado en Auth + dado de alta en `admin_users`, proyecto Vercel independiente (Root Directory `admin`, preset **Other** — NO Vite) sobre el mismo repo, dominio `admin.herohome.es` vía **CNAME en Namecheap** (`admin` → `cname.vercel-dns.com`). **DNS de herohome.es = Namecheap.** Cada push a `main` que toque `admin/` redespliega este proyecto; los cambios en `src/` redespliegan la PWA (dos proyectos Vercel, mismo repo, sin pisarse).
+
 
 **Dashboard de solo lectura para el equipo** — página estática autocontenida en **`admin/index.html`** (estética brandbook: violeta `#5B5CFF`, Inter + Space Mono, bordes 1px, logo Pulse). Secciones: **"Para hoy"** (visitas de hoy en cualquier estado, visitas `Pending to confirm`, ofertas `Presented` indicando a quién le toca responder) y **tarjeta por vivienda** (dirección, precio, propietario con tel/email, honorarios, visitas con estado + feedback post-visita, ofertas con cadena de negociación). Refresco automático configurable (30 min–6 h, selector persistido) + botón manual. Login **email + contraseña** (Supabase Auth; decidido frente a SSO Google).
 
