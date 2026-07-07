@@ -1,0 +1,410 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex, nofollow" />
+  <meta name="theme-color" content="#111827" />
+  <title>Herohome · Operaciones</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%235B5CFF'/%3E%3Cstop offset='1' stop-color='%233C3ECC'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect x='7' y='4' width='7' height='24' rx='3.5' fill='url(%23g)'/%3E%3Crect x='18' y='11' width='7' height='17' rx='3.5' fill='url(%23g)'/%3E%3C/svg%3E" />
+  <style>
+    :root {
+      --violet:       #5B5CFF;
+      --violet-dark:  #3C3ECC;
+      --violet-deep:  #282999;
+      --ink:          #0A0E17;
+      --header:       #111827;
+      --surface:      #F8FAFC;
+      --white:        #FFFFFF;
+      --border:       #E2E8F0;
+      --slate:        #64748B;
+      --slate-light:  #94A3B8;
+      --teal:         #0EA5A0;
+      --teal-light:   #E0F7F6;
+      --amber:        #B45309;
+      --amber-light:  #FEF3C7;
+      --red:          #DC2626;
+      --red-light:    #FEE2E2;
+      --font: 'Inter', system-ui, -apple-system, sans-serif;
+      --mono: 'Space Mono', monospace;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: var(--font); background: var(--surface); color: var(--ink); font-size: 15px; line-height: 1.5; }
+    a { color: var(--violet); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    button { font-family: var(--font); cursor: pointer; }
+
+    /* ---------- Login ---------- */
+    #login-view { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px;
+      background: linear-gradient(160deg, #EEEEFF 0%, var(--surface) 45%); }
+    .login-card { background: var(--white); border: 1px solid var(--border); border-radius: 16px; padding: 40px 36px; width: 100%; max-width: 380px; }
+    .login-card h1 { font-size: 20px; font-weight: 700; margin: 20px 0 4px; letter-spacing: -0.02em; }
+    .login-card p.sub { color: var(--slate); font-size: 14px; margin-bottom: 24px; }
+    .field { margin-bottom: 14px; }
+    .field label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+    .field input { width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 15px; font-family: var(--font); }
+    .field input:focus { outline: 2px solid var(--violet); outline-offset: -1px; border-color: var(--violet); }
+    .btn-primary { width: 100%; background: var(--violet); color: var(--white); border: none; border-radius: 8px; padding: 11px; font-size: 15px; font-weight: 600; margin-top: 6px; }
+    .btn-primary:hover { background: var(--violet-dark); }
+    .btn-primary:disabled { opacity: 0.6; cursor: default; }
+    .login-error { color: var(--red); font-size: 13px; margin-top: 12px; display: none; }
+
+    /* ---------- Header ---------- */
+    header { background: var(--header); color: var(--white); padding: 0 24px; height: 56px; display: flex; align-items: center; gap: 12px; position: sticky; top: 0; z-index: 10; }
+    header .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; letter-spacing: -0.01em; }
+    header .brand .tag { font-family: var(--mono); font-size: 11px; font-weight: 400; color: var(--slate-light); border: 1px solid #374151; border-radius: 4px; padding: 1px 7px; margin-left: 2px; }
+    header .spacer { flex: 1; }
+    header .meta { font-family: var(--mono); font-size: 11px; color: var(--slate-light); }
+    header select { background: transparent; color: var(--slate-light); border: 1px solid #374151; border-radius: 6px; padding: 4px 6px; font-family: var(--mono); font-size: 11px; }
+    .btn-ghost { background: transparent; color: var(--slate-light); border: 1px solid #374151; border-radius: 6px; padding: 5px 12px; font-size: 12px; font-weight: 500; }
+    .btn-ghost:hover { color: var(--white); border-color: var(--slate); }
+
+    main { max-width: 1080px; margin: 0 auto; padding: 28px 24px 64px; }
+    h2 { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--slate); margin: 32px 0 12px; }
+    h2:first-child { margin-top: 0; }
+
+    /* ---------- Para hoy ---------- */
+    .today-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
+    .today-card { background: var(--white); border: 1px solid var(--border); border-radius: 12px; padding: 18px 20px; }
+    .today-card.alert { border-color: var(--violet); }
+    .today-card h3 { font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+    .count-pill { font-family: var(--mono); font-size: 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 999px; padding: 0 9px; }
+    .count-pill.hot { background: var(--violet); border-color: var(--violet); color: var(--white); }
+    .today-item { padding: 9px 0; border-top: 1px solid var(--border); font-size: 13.5px; }
+    .today-item .line2 { color: var(--slate); font-size: 12.5px; }
+    .empty { color: var(--slate-light); font-size: 13px; padding: 6px 0; }
+
+    /* ---------- Vivienda ---------- */
+    .property-card { background: var(--white); border: 1px solid var(--border); border-radius: 12px; margin-bottom: 20px; overflow: hidden; }
+    .prop-head { padding: 18px 22px; border-bottom: 1px solid var(--border); display: flex; flex-wrap: wrap; gap: 14px 28px; align-items: baseline; }
+    .prop-head .addr { font-size: 17px; font-weight: 700; letter-spacing: -0.01em; }
+    .prop-head .city { color: var(--slate); font-weight: 400; }
+    .prop-head .price { font-family: var(--mono); font-size: 16px; font-weight: 700; color: var(--violet-dark); margin-left: auto; }
+    .prop-meta { padding: 12px 22px; border-bottom: 1px solid var(--border); display: flex; flex-wrap: wrap; gap: 6px 28px; font-size: 13.5px; background: var(--surface); }
+    .prop-meta .k { color: var(--slate); margin-right: 6px; }
+    .prop-body { display: grid; grid-template-columns: 1fr 1fr; }
+    .prop-col { padding: 16px 22px; }
+    .prop-col + .prop-col { border-left: 1px solid var(--border); }
+    .prop-col h4 { font-size: 13px; font-weight: 700; margin-bottom: 10px; display: flex; gap: 8px; align-items: center; }
+    .row { display: flex; gap: 10px; align-items: baseline; padding: 7px 0; border-top: 1px solid var(--border); font-size: 13.5px; }
+    .row .who { font-weight: 600; }
+    .row .when { font-family: var(--mono); font-size: 12px; color: var(--slate); white-space: nowrap; }
+    .row .amount { font-family: var(--mono); font-weight: 700; }
+    .row .note { color: var(--slate); font-size: 12.5px; }
+    .badge { font-size: 11px; font-weight: 600; border-radius: 999px; padding: 2px 9px; white-space: nowrap; margin-left: auto; }
+    .b-pending   { background: var(--amber-light); color: var(--amber); }
+    .b-confirmed { background: var(--teal-light); color: var(--teal); }
+    .b-canceled  { background: var(--red-light); color: var(--red); }
+    .b-completed { background: var(--surface); color: var(--slate); border: 1px solid var(--border); }
+    .b-accepted  { background: var(--teal-light); color: var(--teal); }
+    .b-denied    { background: var(--red-light); color: var(--red); }
+    .b-presented { background: var(--amber-light); color: var(--amber); }
+    .counters { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+    .counters span { font-family: var(--mono); font-size: 11px; color: var(--slate); border: 1px solid var(--border); border-radius: 6px; padding: 2px 8px; background: var(--white); }
+    #status-msg { text-align: center; color: var(--slate); padding: 48px 0; }
+    @media (max-width: 760px) {
+      .prop-body { grid-template-columns: 1fr; }
+      .prop-col + .prop-col { border-left: none; border-top: 1px solid var(--border); }
+      header { padding: 0 14px; }
+      header .meta { display: none; }
+      main { padding: 20px 14px 56px; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ===================== LOGIN ===================== -->
+  <div id="login-view" style="display:none">
+    <form class="login-card" id="login-form">
+      <svg width="36" height="36" viewBox="0 0 32 32" aria-hidden="true">
+        <defs><linearGradient id="lg" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stop-color="#5B5CFF"/><stop offset="1" stop-color="#3C3ECC"/>
+        </linearGradient></defs>
+        <rect x="7" y="4" width="7" height="24" rx="3.5" fill="url(#lg)"/>
+        <rect x="18" y="11" width="7" height="17" rx="3.5" fill="url(#lg)"/>
+      </svg>
+      <h1>Operaciones</h1>
+      <p class="sub">Panel interno de Herohome. Solo equipo autorizado.</p>
+      <div class="field">
+        <label for="email">Email</label>
+        <input id="email" type="email" autocomplete="username" required />
+      </div>
+      <div class="field">
+        <label for="password">Contraseña</label>
+        <input id="password" type="password" autocomplete="current-password" required />
+      </div>
+      <button class="btn-primary" id="login-btn" type="submit">Entrar</button>
+      <p class="login-error" id="login-error"></p>
+    </form>
+  </div>
+
+  <!-- ===================== APP ===================== -->
+  <div id="app-view" style="display:none">
+    <header>
+      <span class="brand">
+        <svg width="22" height="22" viewBox="0 0 32 32" aria-hidden="true">
+          <rect x="7" y="4" width="7" height="24" rx="3.5" fill="#8A8BFF"/>
+          <rect x="18" y="11" width="7" height="17" rx="3.5" fill="#8A8BFF"/>
+        </svg>
+        Herohome <span class="tag">OPS</span>
+      </span>
+      <span class="spacer"></span>
+      <span class="meta" id="last-updated"></span>
+      <select id="interval-select" title="Frecuencia de actualización">
+        <option value="30">cada 30 min</option>
+        <option value="60" selected>cada 1 h</option>
+        <option value="180">cada 3 h</option>
+        <option value="360">cada 6 h</option>
+      </select>
+      <button class="btn-ghost" id="refresh-btn">Actualizar</button>
+      <button class="btn-ghost" id="logout-btn">Salir</button>
+    </header>
+    <main>
+      <div id="status-msg">Cargando datos…</div>
+      <div id="content" style="display:none">
+        <h2>Para hoy</h2>
+        <div class="today-grid" id="today-grid"></div>
+        <h2 id="props-title">Viviendas</h2>
+        <div id="properties"></div>
+      </div>
+    </main>
+  </div>
+
+  <script type="module">
+    import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.110.0/+esm';
+
+    const SUPABASE_URL = 'https://zqkvcphtqmibttgnivku.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inpxa3ZjcGh0cW1pYnR0Z25pdmt1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUyNTExMTcsImV4cCI6MjA5MDgyNzExN30.IhR-esmm6WBxw1RkNIchOtwFdnyJl-52K3iYSn4SQpo';
+    const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    const TZ = 'Europe/Madrid';
+    // Estados en BD (PascalCase, verificados): ver CLAUDE.md
+    const VISIT_STATUSES = ['Pending to confirm', 'Confirmed', 'Canceled by owner', 'Canceled by visitor', 'Completed'];
+    const VISIT_LABEL = {
+      'Pending to confirm': ['Pendiente de confirmar', 'b-pending'],
+      'Confirmed':          ['Confirmada', 'b-confirmed'],
+      'Canceled by owner':  ['Cancelada (propietario)', 'b-canceled'],
+      'Canceled by visitor':['Cancelada (comprador)', 'b-canceled'],
+      'Completed':          ['Realizada', 'b-completed'],
+    };
+    const OFFER_LABEL = {
+      'Presented': ['Pendiente', 'b-presented'],
+      'Accepted':  ['Aceptada', 'b-accepted'],
+      'Denied':    ['Rechazada', 'b-denied'],
+    };
+
+    const fmtEUR  = n => n == null ? '—' : new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(n);
+    const fmtDT   = s => s ? new Intl.DateTimeFormat('es-ES', { timeZone: TZ, weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }).format(new Date(s)) : '—';
+    const fmtDate = s => s ? new Intl.DateTimeFormat('es-ES', { timeZone: TZ, day: 'numeric', month: 'short' }).format(new Date(s)) : '—';
+    const dayKey  = s => new Intl.DateTimeFormat('en-CA', { timeZone: TZ }).format(new Date(s)); // YYYY-MM-DD en Madrid
+    const esc = s => (s ?? '').toString().replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+    const visitorName = v => [v.visitor_name, v.visitor_last_name].filter(Boolean).join(' ') || 'Sin nombre';
+
+    // ---------- Auth ----------
+    const $ = id => document.getElementById(id);
+    let refreshTimer = null;
+
+    async function init() {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) enterApp(); else showLogin();
+    }
+
+    function showLogin() {
+      $('login-view').style.display = 'flex';
+      $('app-view').style.display = 'none';
+    }
+
+    $('login-form').addEventListener('submit', async e => {
+      e.preventDefault();
+      const btn = $('login-btn'), err = $('login-error');
+      btn.disabled = true; err.style.display = 'none';
+      const { error } = await supabase.auth.signInWithPassword({
+        email: $('email').value.trim(),
+        password: $('password').value,
+      });
+      btn.disabled = false;
+      if (error) {
+        err.textContent = 'Email o contraseña incorrectos.';
+        err.style.display = 'block';
+        return;
+      }
+      enterApp();
+    });
+
+    $('logout-btn').addEventListener('click', async () => {
+      clearInterval(refreshTimer);
+      await supabase.auth.signOut();
+      location.reload();
+    });
+
+    async function enterApp() {
+      // Solo cuentas dadas de alta en admin_users pueden ver datos.
+      const { data: isAdmin, error } = await supabase.rpc('is_admin');
+      if (error || !isAdmin) {
+        await supabase.auth.signOut();
+        showLogin();
+        const err = $('login-error');
+        err.textContent = 'Esta cuenta no tiene acceso al panel de operaciones.';
+        err.style.display = 'block';
+        return;
+      }
+      $('login-view').style.display = 'none';
+      $('app-view').style.display = 'block';
+      setupRefresh();
+      await load();
+    }
+
+    // ---------- Refresco periódico ----------
+    function setupRefresh() {
+      const sel = $('interval-select');
+      sel.value = localStorage.getItem('ops-refresh-min') || '60';
+      const arm = () => {
+        clearInterval(refreshTimer);
+        refreshTimer = setInterval(load, Number(sel.value) * 60 * 1000);
+      };
+      sel.addEventListener('change', () => { localStorage.setItem('ops-refresh-min', sel.value); arm(); });
+      $('refresh-btn').addEventListener('click', load);
+      arm();
+    }
+
+    // ---------- Datos ----------
+    async function load() {
+      try {
+        const [props, owners, visits, offers] = await Promise.all([
+          supabase.from('properties')
+            .select('id, user_id, street, city, postal_code, sales_price, status, buyer_fee_percent, owner_fee_percent, housing_type, rooms, built_area')
+            .order('created_at', { ascending: true }),
+          supabase.from('users').select('id, first_name, last_name, email, phone'),
+          supabase.from('visit_slots')
+            .select('id, property_id, start_time, end_time, status, visitor_name, visitor_last_name, visitor_phone, post_visit_outcome, post_visit_feedback, updated_at')
+            .in('status', VISIT_STATUSES)
+            .order('start_time', { ascending: true }),
+          // Columnas explícitas: buyer_dni y buyer_email están vetados por ACL de columna (RGPD).
+          supabase.from('offers')
+            .select('id, property_id, parent_offer_id, initiated_by, buyer_name, buyer_phone, amount, status, created_at, updated_at')
+            .order('created_at', { ascending: false }),
+        ]);
+        const failed = [props, owners, visits, offers].find(r => r.error);
+        if (failed) throw failed.error;
+        render(props.data, owners.data, visits.data, offers.data);
+        $('last-updated').textContent = 'actualizado ' + new Intl.DateTimeFormat('es-ES', { timeZone: TZ, hour: '2-digit', minute: '2-digit' }).format(new Date());
+        $('status-msg').style.display = 'none';
+        $('content').style.display = 'block';
+      } catch (e) {
+        console.error(e);
+        $('status-msg').style.display = 'block';
+        $('status-msg').textContent = 'Error cargando datos: ' + (e.message || e);
+      }
+    }
+
+    // ---------- Render ----------
+    function render(props, owners, visits, offers) {
+      const ownerById = Object.fromEntries(owners.map(u => [u.id, u]));
+      const today = dayKey(new Date().toISOString());
+
+      // --- Para hoy ---
+      const addr = p => [p.street, p.city].filter(Boolean).join(', ') || 'Sin dirección';
+      const propById = Object.fromEntries(props.map(p => [p.id, p]));
+      const withProp = (arr) => arr.map(x => ({ ...x, _addr: addr(propById[x.property_id] || {}) }));
+
+      const visitsToday   = withProp(visits.filter(v => dayKey(v.start_time) === today));
+      const visitsPending = withProp(visits.filter(v => v.status === 'Pending to confirm'));
+      const offersPending = withProp(offers.filter(o => o.status === 'Presented'));
+
+      const todayCard = (title, items, rowFn, hot) => `
+        <div class="today-card ${hot && items.length ? 'alert' : ''}">
+          <h3>${title} <span class="count-pill ${hot && items.length ? 'hot' : ''}">${items.length}</span></h3>
+          ${items.length ? items.map(rowFn).join('') : '<p class="empty">Nada pendiente.</p>'}
+        </div>`;
+
+      $('today-grid').innerHTML =
+        todayCard('Visitas de hoy', visitsToday, v => `
+          <div class="today-item">
+            <div><strong>${esc(visitorName(v))}</strong> · ${fmtDT(v.start_time)} <span class="badge ${VISIT_LABEL[v.status][1]}" style="float:right">${VISIT_LABEL[v.status][0]}</span></div>
+            <div class="line2">${esc(v._addr)}</div>
+          </div>`, false) +
+        todayCard('Visitas por confirmar', visitsPending, v => `
+          <div class="today-item">
+            <div><strong>${esc(visitorName(v))}</strong> · ${fmtDT(v.start_time)}</div>
+            <div class="line2">${esc(v._addr)} — espera al propietario</div>
+          </div>`, true) +
+        todayCard('Ofertas por responder', offersPending, o => `
+          <div class="today-item">
+            <div><strong>${esc(o.buyer_name || 'Comprador')}</strong> · <span class="amount">${fmtEUR(o.amount)}</span></div>
+            <div class="line2">${esc(o._addr)} — ${o.initiated_by === 'Owner' ? 'contraoferta: espera al comprador' : 'espera al propietario'} · ${fmtDate(o.created_at)}</div>
+          </div>`, true);
+
+      // --- Viviendas ---
+      $('props-title').textContent = `Viviendas (${props.length})`;
+      $('properties').innerHTML = props.length ? props.map(p => {
+        const o = ownerById[p.user_id] || {};
+        const pv = visits.filter(v => v.property_id === p.id);
+        const po = offers.filter(x => x.property_id === p.id);
+        const count = (arr, st) => arr.filter(x => x.status === st).length;
+        const canceled = count(pv, 'Canceled by owner') + count(pv, 'Canceled by visitor');
+
+        const visitRows = pv.length ? [...pv].reverse().map(v => `
+          <div class="row">
+            <span class="who">${esc(visitorName(v))}</span>
+            <span class="when">${fmtDT(v.start_time)}</span>
+            ${v.visitor_phone ? `<a href="tel:${esc(v.visitor_phone)}" class="note">${esc(v.visitor_phone)}</a>` : ''}
+            <span class="badge ${VISIT_LABEL[v.status][1]}">${VISIT_LABEL[v.status][0]}</span>
+          </div>
+          ${v.post_visit_feedback ? `<div class="row" style="border-top:none;padding-top:0"><span class="note">Feedback: ${esc(v.post_visit_feedback)}</span></div>` : ''}`
+        ).join('') : '<p class="empty">Sin visitas todavía.</p>';
+
+        const offerRows = po.length ? po.map(x => `
+          <div class="row">
+            <span class="who">${x.initiated_by === 'Owner' ? 'Contraoferta del propietario' : esc(x.buyer_name || 'Comprador')}</span>
+            <span class="amount">${fmtEUR(x.amount)}</span>
+            <span class="when">${fmtDate(x.created_at)}</span>
+            ${x.buyer_phone && x.initiated_by === 'Buyer' ? `<a href="tel:${esc(x.buyer_phone)}" class="note">${esc(x.buyer_phone)}</a>` : ''}
+            <span class="badge ${OFFER_LABEL[x.status][1]}">${OFFER_LABEL[x.status][0]}</span>
+          </div>`
+        ).join('') : '<p class="empty">Sin ofertas todavía.</p>';
+
+        return `
+        <div class="property-card">
+          <div class="prop-head">
+            <span class="addr">${esc(p.street || 'Sin dirección')} <span class="city">· ${esc(p.city || '')} ${esc(p.postal_code || '')}</span></span>
+            <span class="price">${fmtEUR(p.sales_price)}</span>
+          </div>
+          <div class="prop-meta">
+            <span><span class="k">Propietario</span><strong>${esc([o.first_name, o.last_name].filter(Boolean).join(' ') || '—')}</strong></span>
+            <span><span class="k">Tel.</span>${o.phone ? `<a href="tel:${esc(o.phone)}">${esc(o.phone)}</a>` : '—'}</span>
+            <span><span class="k">Email</span>${o.email ? `<a href="mailto:${esc(o.email)}">${esc(o.email)}</a>` : '—'}</span>
+            <span><span class="k">Estado</span>${esc(p.status || '—')}</span>
+            <span><span class="k">Honorarios</span>${p.owner_fee_percent ?? '—'} % / ${p.buyer_fee_percent ?? '—'} %</span>
+          </div>
+          <div class="prop-body">
+            <div class="prop-col">
+              <h4>Visitas</h4>
+              <div class="counters">
+                <span>${count(pv, 'Pending to confirm')} pendientes</span>
+                <span>${count(pv, 'Confirmed')} confirmadas</span>
+                <span>${count(pv, 'Completed')} realizadas</span>
+                <span>${canceled} canceladas</span>
+              </div>
+              ${visitRows}
+            </div>
+            <div class="prop-col">
+              <h4>Ofertas</h4>
+              <div class="counters">
+                <span>${count(po, 'Presented')} pendientes</span>
+                <span>${count(po, 'Accepted')} aceptadas</span>
+                <span>${count(po, 'Denied')} rechazadas</span>
+              </div>
+              ${offerRows}
+            </div>
+          </div>
+        </div>`;
+      }).join('') : '<p class="empty">No hay viviendas en la base de datos.</p>';
+    }
+
+    init();
+  </script>
+</body>
+</html>

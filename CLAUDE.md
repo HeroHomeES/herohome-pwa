@@ -37,7 +37,7 @@ Herohome es la primera agencia inmobiliaria 100% digital de España. Propietario
 | WhatsApp | WhatsApp Cloud API (Meta) — webhook apunta a `whatsapp-agent` |
 | IA | Anthropic API — agente WhatsApp `claude-sonnet-4-6`; extracción Idealista `claude-haiku-4-5` |
 | Hosting | Vercel (auto-deploy desde GitHub) |
-| Dashboard Operaciones | APLAZADO (B8) — interim: Supabase Table Editor + vistas SQL |
+| Dashboard Operaciones | B8 v1 construido (7 jul): `admin/index.html` → admin.herohome.es (pendiente alta en Vercel) |
 
 ---
 
@@ -226,6 +226,14 @@ src/
 ---
 
 ## Registro de sesiones
+
+### 7 julio 2026 (2ª parte) — B8 v1: Dashboard de Operaciones (admin.herohome.es) 🛠️ (pendiente: SQL + usuario admin + proyecto Vercel + push)
+
+**Dashboard de solo lectura para el equipo** — página estática autocontenida en **`admin/index.html`** (estética brandbook: violeta `#5B5CFF`, Inter + Space Mono, bordes 1px, logo Pulse). Secciones: **"Para hoy"** (visitas de hoy en cualquier estado, visitas `Pending to confirm`, ofertas `Presented` indicando a quién le toca responder) y **tarjeta por vivienda** (dirección, precio, propietario con tel/email, honorarios, visitas con estado + feedback post-visita, ofertas con cadena de negociación). Refresco automático configurable (30 min–6 h, selector persistido) + botón manual. Login **email + contraseña** (Supabase Auth; decidido frente a SSO Google).
+
+- **Acceso a datos:** vía RLS, sin Service Role en cliente — `supabase/sql/2026-07-07-admin-dashboard.sql` crea tabla `admin_users` (RLS DENY), función `is_admin()` (security definer, solo authenticated) y 4 políticas SELECT admin (users, properties, visit_slots, offers). Tras login, la página valida `rpc('is_admin')` y expulsa a cuentas no admin. El ACL por columna de `offers` sigue ocultando `buyer_dni`/`buyer_email` (la página pide columnas explícitas).
+- **Verificado en local:** login contra producción (error controlado con credenciales malas) y render completo con datos de demostración (capturas OK). Sin errores de consola.
+- **⏳ Pendiente operativo (pasos en `admin/README.md`):** (1) aplicar el SQL; (2) crear usuario admin `hola@herohome.es` en Authentication (Auto Confirm) + INSERT del PASO 2; (3) nuevo proyecto Vercel sobre el mismo repo con Root Directory `admin` + dominio `admin.herohome.es` (CNAME); (4) push a `main`.
 
 ### 7 julio 2026 — Rediseño visual de la PWA (DESIGN.md v3.0 / logo Pulse) + email del magic link 🎨 (pendiente push)
 
