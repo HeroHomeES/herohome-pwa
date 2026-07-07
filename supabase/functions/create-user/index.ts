@@ -43,16 +43,39 @@ interface CreateUserAndPropertyBody {
     communityFee?: number | string
     condition?: string
     electronicCertificate?: string
-    external?: boolean
+    external?: boolean | string
     garageSpace?: string
     heatingType?: string
-    elevator?: boolean
+    elevator?: boolean | string
     orientation?: string
     refCatastral?: string
     registroPropiedad?: number | string
     rejectOffersBelow?: number | string
     floor?: number | string
   }
+}
+
+// Acepta el booleano de un campo Checkbox de Salesforce (DEV) o el string de un
+// campo Picklist (PROD, p.ej. "Exterior"/"Interior", "Sí"/"No"). Cualquier valor
+// no reconocido → null (nunca rompe el upsert de una columna boolean).
+function toBoolOrNull(val: unknown): boolean | null {
+  if (typeof val === "boolean") return val
+  if (val === null || val === undefined) return null
+  const s = String(val).trim().toLowerCase()
+  if (s === "") return null
+  if (["true", "1", "sí", "si", "yes", "exterior"].includes(s)) return true
+  if (["false", "0", "no", "interior"].includes(s)) return false
+  return null
+}
+
+// Para columnas integer (rooms/bathrooms/floor). Acepta el número de un campo
+// Number de SF (DEV) o extrae el entero de una etiqueta de Picklist de PROD
+// (p.ej. "3 dormitorios" → 3). Si no hay número reconocible → null.
+function toIntOrNull(val: unknown): number | null {
+  if (typeof val === "number") return Number.isFinite(val) ? Math.trunc(val) : null
+  if (val === null || val === undefined) return null
+  const m = String(val).match(/-?\d+/)
+  return m ? parseInt(m[0], 10) : null
 }
 
 Deno.serve(async (req: Request) => {
@@ -115,21 +138,22 @@ Deno.serve(async (req: Request) => {
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       )
     }
-    // El usuario ya existe en auth.users — recuperamos su ID
-    const { data: existingUser, error: lookupError } = await supabase
-      .schema("auth")
-      .from("users")
-      .select("id")
-      .eq("email", user.email)
-      .single()
+    // El usuario ya existe en auth.users — recuperamos su ID vía Admin API.
+    // El schema `auth` NO es accesible por PostgREST (.schema("auth") →
+    // "Invalid schema: auth"), así que usamos generateLink, que devuelve el
+    // usuario existente. Es idempotente y no envía email (solo genera el enlace).
+    const { data: existing, error: lookupError } = await supabase.auth.admin.generateLink({
+      type: "magiclink",
+      email: user.email,
+    })
 
-    if (lookupError || !existingUser) {
+    if (lookupError || !existing?.user) {
       return new Response(
-        JSON.stringify({ error: `Usuario ya existe pero no se pudo recuperar: ${lookupError?.message}` }),
+        JSON.stringify({ error: `Usuario ya existe pero no se pudo recuperar: ${lookupError?.message ?? "usuario no encontrado"}` }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       )
     }
-    userId = existingUser.id
+    userId = existing.user.id
   } else {
     userId = authData.user.id
   }
@@ -163,8 +187,8 @@ Deno.serve(async (req: Request) => {
     state: property?.state ?? null,
     postal_code: property?.postalCode ?? null,
     housing_type: property?.housingType ?? null,
-    rooms: property?.rooms ?? null,
-    bathrooms: property?.bathrooms ?? null,
+    rooms: toIntOrNull(property?.rooms),
+    bathrooms: toIntOrNull(property?.bathrooms),
     built_area: property?.builtArea ?? null,
     useful_surface_area: usefulSurfaceArea ?? null,
     sales_price: property?.salesPrice ?? null,
@@ -175,15 +199,15 @@ Deno.serve(async (req: Request) => {
     community_fee: property?.communityFee ?? null,
     condition: property?.condition ?? null,
     electronic_certificate: property?.electronicCertificate ?? null,
-    is_exterior: property?.external ?? null,
+    is_exterior: toBoolOrNull(property?.external),
     garage_space: property?.garageSpace ?? null,
     heating_type: property?.heatingType ?? null,
-    has_elevator: property?.elevator ?? null,
+    has_elevator: toBoolOrNull(property?.elevator),
     orientation: property?.orientation ?? null,
     ref_catastral: property?.refCatastral ?? null,
     registro_propiedad: property?.registroPropiedad ?? null,
     reject_offers_below: property?.rejectOffersBelow ?? null,
-    floor: property?.floor ?? null,
+    floor: toIntOrNull(property?.floor),
     // Solo se incluyen si Salesforce los envía: así no se pisa el valor existente
     // (ni el default de BD) con null en re-sincronizaciones. owner_fee/buyer_fee son
     // columnas GENERATED: NUNCA se escriben aquí (la BD las calcula).
