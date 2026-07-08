@@ -8,7 +8,10 @@ import { IconCheck, IconPhone, IconLogOut } from '../components/icons'
 // Se configuran por vivienda desde el Table Editor: agent_name, agent_photo_url,
 // agent_calendar_url.
 const DEFAULT_AGENT_NAME = 'Alejandro Yuste'
-const DEFAULT_AGENT_CALENDAR_URL = 'https://calendar.app.google/PuJQpTUbAmTX5hjk8'
+// MISMO enlace que AGENT_CALENDAR_URL de chat-with-hero y HUMAN_CALL_URL del
+// whatsapp-agent. Si se cambia, actualizarlo en esos tres sitios.
+const DEFAULT_AGENT_CALENDAR_URL =
+  'https://calendar.google.com/calendar/appointments/schedules/AcZssZ3hWuWzgWVUdcFdrr9SS_yHlwFpH6EpRTCnZAQqfGFmA26hAAqHW3pvLlwZ-dDB3ePfLqZeWfIQ'
 
 const HERO_FUNCTIONS = [
   'Responde a todos los interesados en menos de 1 minuto, a cualquier hora',

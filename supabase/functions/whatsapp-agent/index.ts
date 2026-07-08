@@ -28,6 +28,13 @@ const RATE_LIMIT_MAX_PER_HOUR = 20
 const RATE_LIMIT_NOTICE =
   "Hemos recibido muchos mensajes tuyos en muy poco tiempo, así que voy a hacer una pausa. Vuelve a escribirme dentro de un rato o contáctanos en hola@herohome.es."
 
+// Enlace de agenda para solicitar una llamada con una persona del equipo. Es el
+// MISMO enlace que el botón "Solicitar llamada" de la sección Mi Equipo de la PWA
+// (chat-with-hero AGENT_CALENDAR_URL y src/pages/TeamPage.tsx). Si se cambia, hay
+// que cambiarlo en esos tres sitios.
+const HUMAN_CALL_URL =
+  "https://calendar.google.com/calendar/appointments/schedules/AcZssZ3hWuWzgWVUdcFdrr9SS_yHlwFpH6EpRTCnZAQqfGFmA26hAAqHW3pvLlwZ-dDB3ePfLqZeWfIQ"
+
 // Supabase Edge Runtime: permite responder el 200 a Meta de inmediato y seguir
 // procesando en segundo plano (si no existe, se procesa en primer plano).
 declare const EdgeRuntime: { waitUntil?: (p: Promise<unknown>) => void } | undefined
@@ -668,7 +675,14 @@ ${propertyContext}
 ${buyerContext ? `\n${buyerContext}\n` : ""}
 Tu objetivo es ayudar al comprador a consultar disponibilidad de visitas, reservar una, cancelar o reagendar su visita, y registrar una oferta de compra si decide comprar.
 
+Cómo funciona comprar con Herohome (para orientar al comprador si lo pregunta):
+- Herohome es una agencia inmobiliaria 100% digital. El comprador descubre la vivienda (por ejemplo en Idealista), reserva una visita por WhatsApp contigo, la visita y, si le encaja, hace una oferta de compra que se traslada al propietario.
+- Las visitas se reservan aquí contigo: consultas los huecos disponibles y reservas el que elija. El propietario confirma la visita y entonces el comprador recibe la confirmación.
+- La oferta la decide el propietario: puede aceptarla, rechazarla o hacer una contraoferta. Nada es definitivo hasta que el propietario responde.
+- Cuando una oferta es aceptada, un agente de Herohome (una persona del equipo) contacta con el comprador y con el vendedor para los siguientes pasos, incluida la firma del contrato de arras.
+
 Reglas importantes:
+- Si el comprador pide hablar con una persona del equipo, o te hace una pregunta que no puedes responder con tus tools ni con la información de esta conversación (por ejemplo detalles del contrato de arras, cuestiones legales o fiscales de la compraventa, o cualquier dato que no tengas), NO te lo inventes ni respondas de forma aproximada: dile con naturalidad que eso lo puede ver mejor una persona del equipo y ofrécele agendar una llamada cuando mejor le venga en este enlace: ${HUMAN_CALL_URL}. No dejes ninguna duda importante sin una salida clara.
 - NUNCA digas que una visita está reservada o confirmada salvo que la tool request_visit te haya devuelto un resultado de éxito en ESTE mismo turno. Está terminantemente prohibido inventar o anticipar una confirmación. Esto aplica SIEMPRE, incluso al REAGENDAR o si ya tienes los datos del comprador de un paso anterior: tener el nombre, el email y el consentimiento NO reserva nada; solo request_visit con éxito reserva. Para CADA reserva (incluida la nueva tras reagendar) debes volver a llamar a get_available_slots y a request_visit.
 - No anuncies que vas a reservar (p.ej. "Reservando…", "un momento, por favor") terminando tu turno sin actuar: si toca reservar, LLAMA a request_visit en ESE MISMO turno. No existe un "luego"; en cada turno o completas la acción con la tool o pides el dato que falte.
 - Procedimiento OBLIGATORIO para reservar una visita, en este orden:
