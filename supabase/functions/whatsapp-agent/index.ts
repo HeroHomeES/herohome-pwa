@@ -637,29 +637,50 @@ async function hourlyMessageCount(
 
 // --- Anthropic call ---
 
-async function callClaude(system: string, messages: unknown[]): Promise<AnthropicResponse> {
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "x-api-key": ANTHROPIC_API_KEY,
-      "anthropic-version": "2023-06-01",
-      "content-type": "application/json",
-    },
-    body: JSON.stringify({
-      model: CLAUDE_MODEL,
-      max_tokens: 1024,
-      system,
-      messages,
-      tools: TOOLS,
-    }),
-  })
+// Errores transitorios de la API de Anthropic que merecen reintento.
+// 529 = overloaded_error (Anthropic saturado); 429 = rate limit; 5xx = fallo de servidor.
+const ANTHROPIC_RETRYABLE_STATUS = new Set([429, 500, 502, 503, 529])
+const ANTHROPIC_MAX_ATTEMPTS = 4
 
-  if (!res.ok) {
+async function callClaude(system: string, messages: unknown[]): Promise<AnthropicResponse> {
+  let lastErr = "Anthropic API: sin respuesta"
+
+  for (let attempt = 1; attempt <= ANTHROPIC_MAX_ATTEMPTS; attempt++) {
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "x-api-key": ANTHROPIC_API_KEY,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        model: CLAUDE_MODEL,
+        max_tokens: 1024,
+        system,
+        messages,
+        tools: TOOLS,
+      }),
+    })
+
+    if (res.ok) {
+      return await res.json()
+    }
+
     const errBody = await res.text()
-    throw new Error(`Anthropic API ${res.status}: ${errBody}`)
+    lastErr = `Anthropic API ${res.status}: ${errBody}`
+
+    // Solo reintentamos errores transitorios; los 4xx de cliente fallan al momento.
+    if (!ANTHROPIC_RETRYABLE_STATUS.has(res.status) || attempt === ANTHROPIC_MAX_ATTEMPTS) {
+      throw new Error(lastErr)
+    }
+
+    // Backoff exponencial con jitter: ~1s, 2s, 4s entre intentos.
+    const delayMs = 1000 * Math.pow(2, attempt - 1) + Math.floor(Math.random() * 250)
+    console.warn(`[callClaude] ${lastErr} — reintento ${attempt}/${ANTHROPIC_MAX_ATTEMPTS - 1} en ${delayMs}ms`)
+    await new Promise((resolve) => setTimeout(resolve, delayMs))
   }
 
-  return await res.json()
+  throw new Error(lastErr)
 }
 
 function buildSystemPrompt(property: { street?: string; city?: string; sales_price?: number } | null, buyerContext: string): string {
