@@ -33,7 +33,8 @@ Herohome es la primera agencia inmobiliaria 100% digital de España. Propietario
 | Agente WhatsApp | Edge Function `whatsapp-agent` (Claude Sonnet 4.6, tool calling) — ver `docs/AGENT.md` |
 | CRM | Salesforce Enterprise + Docs/Sign Made Easy — **CONGELADO: no añadir nada** |
 | Email transaccional (CV y PC) | Resend desde Edge Functions (plantillas HTML en código) |
-| Make.com | SOLO: Esc. 1 (form web → Lead SF) y Esc. 2 (Gmail Idealista → Edge Function) |
+| Make.com | SOLO Esc. 1 (form web → Lead SF). **Esc. 2 (Idealista) sustituido por Google Apps Script (9 jul 2026)** — inactivo, fallback documentado |
+| Ingesta leads Idealista | **Google Apps Script** en el buzón `hola@herohome.es` (trigger 1 min) → POST a `process-idealista-lead`. Reemplaza a Make Esc. 2 |
 | WhatsApp | WhatsApp Cloud API (Meta) — webhook apunta a `whatsapp-agent` |
 | IA | Anthropic API — agente WhatsApp `claude-sonnet-4-6`; extracción Idealista `claude-haiku-4-5` |
 | Hosting | Vercel (auto-deploy desde GitHub) |
@@ -135,7 +136,7 @@ src/
 | `save-message` | Interna desde whatsapp-agent | ✅ Completada |
 | `notify-visit` | HTTP POST desde PWA | ✅ Reescrita v3.1 (B5): Resend + WhatsApp directo al PC, sin Make |
 | `whatsapp-agent` | Webhook de Meta (GET + POST con HMAC) | ✅ EN VIVO (B5, verify_jwt=false) — webhook conectado y chat entrante probado |
-| `process-idealista-lead` | HTTP POST desde Make Esc. 2 | ✅ Desplegada (B5, verify_jwt=false) — pendiente reconfigurar Make Esc. 2 |
+| `process-idealista-lead` | HTTP POST desde **Google Apps Script** (antes Make Esc. 2) | ✅ En producción (verify_jwt=false); ingesta vía Apps Script desde 9 jul 2026 |
 | `cancel-visit-by-visitor` | Tool de whatsapp-agent | ✅ Completada (B6): cancela (status → Canceled by visitor) + notifica al CV |
 | `visit-reminders` | Cron diario 07:00 UTC (x-api-key) | ✅ B7: recordatorio el día antes (WhatsApp+email PC, email CV) |
 | `manage-offer` | HTTP POST desde PWA | ✅ B9 validado e2e: accept/deny/counter + aviso PC/equipo |
@@ -166,7 +167,7 @@ src/
 | # | Escenario | Estado |
 |---|-----------|--------|
 | 1 | Formulario web → Lead en Salesforce | ✅ Activo |
-| 2 | Gmail Watch (Idealista) → HTTP a process-idealista-lead (2 módulos) | ✅ Configurado (B5) — pendiente: prueba con primer email real de Idealista |
+| 2 | Gmail Watch (Idealista) → HTTP a process-idealista-lead | ❌ **SUSTITUIDO por Google Apps Script (9 jul 2026)** — desactivar; se mantiene configurado como fallback documentado |
 | 3-6 | Notificaciones vía Gmail | ❌ ELIMINADOS en v3.1 — desactivar Esc. 3 si aún está activo |
 | — | Webhook WhatsApp entrante en Make | ❌ ELIMINADO: el webhook de Meta apunta a whatsapp-agent |
 
@@ -206,7 +207,7 @@ src/
 
 **Pendiente operacional antes del lanzamiento (no código):**
 - ⚠️ **Meta → modo Live** (CRÍTICO): la app de Meta está en modo Desarrollo. Solo números de prueba autorizados reciben WhatsApp. Hasta activar "Live mode" (verificación de empresa), compradores reales no recibirán nada. Requiere: completar Business Verification en Meta + solicitar Live mode.
-- 🔄 **Make Esc. 2**: probar con el primer email real de Idealista (función validada vía curl; el trigger Gmail no se ha probado con email real).
+- ✅ **Ingesta de leads de Idealista**: migrada de Make Esc. 2 a **Google Apps Script** (9 jul 2026) y validada e2e con lead real (email real → conversación creada 201). Ver Registro de sesiones. Antes de abrir a más viviendas: vaciar `ALLOWED_SF_ID` en el script.
 - 🧹 **Limpieza opcional** (no bloqueante): (a) borrar datos de prueba (visitas/conversaciones de Roberto y Carlos en vivienda Santander + slot "mañana" del test de B7); (b) eliminar secret `MAKE_WEBHOOK_NOTIFY_VISIT` (obsoleto en v3.1); (c) desactivar/eliminar escenario Make `whatsapp-herohome-inbound` (obsoleto v3.0); (d) eliminar secret `OPENAI_API_KEY` (nunca se usó en v3.1).
 
 **B12 — QA y Lanzamiento: 🔄 EN CURSO** — ✅ higiene de secretos (Resend rotada, obsoletos borrados, `.env` fuera de git — 2 jul); ✅ revisión RLS (sólida; hardening aplicado 2 jul); ✅ pen test de endpoints (HMAC + x-api-key + JWT sin agujeros, 2 jul; falta solo aislamiento cruzado CV↔CV con datos reales); ✅ monitoring v1 (alertas email en los 3 crons, 2 jul) **+ agentes user-facing cableados con alertTeam (5 jul)**; ✅ dead-man's-switch de crons construido (6 jul — pendiente operativo: crear los 5 checks en Healthchecks.io y pegar las Ping URLs en `app_config`); ✅ tests de piezas deterministas + CI (6 jul)
@@ -226,6 +227,21 @@ src/
 ---
 
 ## Registro de sesiones
+
+### 9 julio 2026 — Ingesta de leads de Idealista: Make Esc. 2 → Google Apps Script + robustez de los agentes 📥
+
+**Cambio de arquitectura en la ingesta de leads de Idealista.** El Escenario 2 de Make (Gmail Watch → HTTP a `process-idealista-lead`) daba problemas al probarlo en real: `x-api-key` desactualizada (401), JSON construido a mano que rompía con el HTML del email (400 "body is required"), polling que consume operaciones y añade latencia, y auto-desactivación silenciosa de Make. Se sustituyó por un **Google Apps Script** que corre dentro del buzón `hola@herohome.es`.
+
+- **Cómo funciona:** trigger temporal cada 1 min → `GmailApp.search('from:reply@idealista.com newer_than:3d -label:herohome-procesado')` → por cada hilo, POST a `process-idealista-lead` con `x-api-key` y `{subject, body (getPlainBody), from}` (JSON.stringify escapa solo → adiós errores de escapado). Si la función responde 2xx, etiqueta el hilo `herohome-procesado` (no reprocesa); si falla, lo deja sin etiquetar → reintento automático en el siguiente tick. El **buzón es la cola**: ningún lead se pierde. Google avisa por email si el trigger empieza a fallar.
+- **Filtro afinado:** los emails de lead salen SIEMPRE de `reply@idealista.com` (verificado contra .eml real); las newsletters/alertas salen de OTRAS direcciones de idealista.com (por eso `from:idealista.com` a secas capturaba de todo → generaba alertas por cada newsletter). La ref de la vivienda = **Salesforce ID** en asunto y cuerpo.
+- **Modo prueba (ACTIVO durante pruebas finales):** constante `ALLOWED_SF_ID` en el script; si está rellena, doble capa (filtro en la búsqueda + comprobación en código) para procesar SOLO esa vivienda. Fijada a Torrecaballeros `001aA00000cAoFOQA0`. ⚠️ **Al abrir a más viviendas (Alaquás, Calle Era…): vaciar `ALLOWED_SF_ID = ''`** — antes hay que dar de alta esas viviendas (Salesforce → `create-user`) y avisar a sus propietarios.
+- **Fuente de verdad del código:** el script VIVO está en script.google.com (proyecto "Herohome — Idealista leads"). Copia local en `apps-script/idealista-lead-inbound.gs` **NO commiteada** (lleva la `HEROHOME_API_KEY` hardcodeada → higiene de secretos). Pendiente menor: decidir si commitear una versión con la key como placeholder que lea de `app_config.herohome_api_key`.
+- **Make Esc. 2:** se mantiene configurado pero **inactivo**, como fallback documentado (reactivar = 2 clics).
+- **Validado e2e en producción:** lead real (Iñigo, +34618043534, Torrecaballeros) → `process-idealista-lead` 201 → conversación creada. Meta en modo producción; los WhatsApp de bienvenida llegan a los números probados.
+
+**Robustez de los agentes (desplegado, push a main):**
+- **Reintentos ante 529 de Anthropic.** `whatsapp-agent` y `chat-with-hero` abortaban a la primera si Anthropic devolvía 529 (overloaded)/429/5xx → el mensaje del comprador se quedaba sin respuesta (Meta ya tiene el 200 y no reintenta) y solo saltaba la alerta. `callClaude` ahora reintenta hasta 3 veces con backoff exponencial + jitter (~1s/2s/4s) solo en transitorios; la alerta al equipo solo salta si se agotan. Desplegado: **whatsapp-agent v38, chat-with-hero v11**.
+- **Hueco de observabilidad (pendiente — task en curso):** el webhook de `whatsapp-agent` procesa `change.value.messages` pero **ignora `change.value.statuses`** (estados de entrega de Meta: sent/delivered/failed). Cuando un WhatsApp se acepta (201) pero no se entrega, quedamos ciegos. Caso Iñigo: 201 pero el comprador no recibió (probablemente puntual/específico de su número; otros números sí reciben). Tarea abierta: capturar `statuses` + `alertTeam` en `failed` con el código/motivo de Meta.
 
 ### 8 julio 2026 — Ajustes de prompt de los dos agentes: escalado a humano + contexto funcional 🗣️
 
