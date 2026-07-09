@@ -80,9 +80,29 @@ interface WhatsAppMessage {
   text?: { body: string }
 }
 
+// Error dentro de un callback de estado (status.errors[]): p.ej.
+// { code: 131026, title: "Message undeliverable" }.
+interface WhatsAppStatusError {
+  code?: number
+  title?: string
+  message?: string
+  error_data?: { details?: string }
+}
+
+// Callback de estado de entrega (change.value.statuses[]): la Cloud API informa
+// del ciclo de vida de un mensaje que NOSOTROS enviamos (sent/delivered/read/failed).
+interface WhatsAppStatus {
+  id: string // wamid del mensaje enviado
+  status: string // sent | delivered | read | failed
+  recipient_id?: string // wa_id del destinatario
+  timestamp?: string
+  errors?: WhatsAppStatusError[]
+}
+
 interface WhatsAppValue {
   contacts?: { profile?: { name?: string }; wa_id: string }[]
   messages?: WhatsAppMessage[]
+  statuses?: WhatsAppStatus[]
 }
 
 interface WhatsAppWebhookBody {
@@ -857,16 +877,34 @@ Deno.serve(async (req: Request) => {
     return okResponse()
   }
 
-  // Todos los mensajes del webhook: Meta puede agrupar varios (entry/changes/
-  // messages) en un mismo POST — antes solo se procesaba el primero.
+  // Todos los mensajes y estados del webhook: Meta puede agrupar varios
+  // (entry/changes/messages|statuses) en un mismo POST — antes solo se procesaba
+  // el primer mensaje y se ignoraban por completo los `statuses`.
   const incoming: WhatsAppMessage[] = []
+  const statuses: WhatsAppStatus[] = []
   for (const entry of payload.entry ?? []) {
     for (const change of entry.changes ?? []) {
       for (const msg of change.value?.messages ?? []) incoming.push(msg)
+      for (const st of change.value?.statuses ?? []) statuses.push(st)
     }
   }
 
-  // Sin mensajes (p.ej. actualización de entrega/lectura) — ack y salir.
+  // Callbacks de estado de entrega de un mensaje que enviamos NOSOTROS. Nos
+  // interesan los `failed`: la Cloud API aceptó el envío (HTTP 200) pero WhatsApp
+  // NO lo entregó (p.ej. la plantilla `bienvenida_pc` no llega al comprador).
+  // Sin esto quedábamos ciegos ante ese fallo en un funnel crítico. Best-effort
+  // en segundo plano para no retrasar el 200 a Meta ni romper el flujo entrante.
+  const failedStatuses = statuses.filter((s) => s.status === "failed")
+  if (failedStatuses.length > 0) {
+    const statusWork = handleFailedStatuses(failedStatuses)
+    if (typeof EdgeRuntime !== "undefined" && EdgeRuntime?.waitUntil) {
+      EdgeRuntime.waitUntil(statusWork)
+    } else {
+      await statusWork
+    }
+  }
+
+  // Sin mensajes entrantes (p.ej. POST de solo-statuses) — ack y salir.
   if (incoming.length === 0) {
     return okResponse()
   }
@@ -902,6 +940,46 @@ Deno.serve(async (req: Request) => {
 
 function okResponse(): Response {
   return new Response("OK", { status: 200, headers: corsHeaders })
+}
+
+// --- Estados de entrega FALLIDOS (change.value.statuses[] con status="failed") ---
+// Corre en segundo plano tras el ack a Meta. Registra el fallo y avisa al equipo
+// con el código/motivo de Meta, el destinatario y el message id. NO reintenta el
+// envío (WhatsApp no reintenta un `failed`); es observabilidad para un funnel
+// crítico. Best-effort: alertTeam nunca lanza, pero envolvemos por si acaso.
+async function handleFailedStatuses(statuses: WhatsAppStatus[]): Promise<void> {
+  for (const status of statuses) {
+    try {
+      const err = status.errors?.[0]
+      const code = err?.code ?? "desconocido"
+      const title = err?.title ?? "Sin título"
+      const details = err?.error_data?.details ?? err?.message ?? ""
+      const recipient = status.recipient_id ?? "desconocido"
+
+      console.error(
+        `[whatsapp-agent] WhatsApp NO entregado (failed) a ${recipient} ` +
+          `[wamid ${status.id}]: ${code} ${title}${details ? ` — ${details}` : ""}`
+      )
+
+      const detail = [
+        `Destinatario (wa_id): ${recipient}`,
+        `Message id (wamid): ${status.id}`,
+        `Código de error Meta: ${code}`,
+        `Motivo: ${title}`,
+        details ? `Detalle: ${details}` : null,
+      ]
+        .filter(Boolean)
+        .join("\n")
+
+      await alertTeam({
+        source: "whatsapp-agent",
+        subject: `WhatsApp no entregado a ${recipient} (error ${code})`,
+        detail,
+      })
+    } catch (_e) {
+      // best-effort: un fallo procesando un status no debe tumbar el resto.
+    }
+  }
 }
 
 // --- Procesado de un mensaje entrante ---
