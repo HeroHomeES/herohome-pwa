@@ -60,6 +60,29 @@ export function ownerVisitCanceledByVisitorHtml(params: {
   })
 }
 
+// Email dirigido al PROPIETARIO (CV) cuando un comprador SOLICITA una visita
+// (el hueco queda 'Pending to confirm'). Le invita a entrar a confirmarla.
+export function ownerNewVisitRequestHtml(params: {
+  ownerName?: string
+  visitorName: string
+  propertyAddress: string
+  dateTime: string
+}): string {
+  const saludo = params.ownerName ? `Hola ${params.ownerName}, ` : "Hola, "
+  return emailShell({
+    accentColor: "#5B5CFF",
+    heading: "Tienes una nueva solicitud de visita",
+    intro: `${saludo}un comprador ha solicitado una visita a tu vivienda y está esperando tu confirmación.`,
+    detailRows: [
+      { label: "Vivienda", value: params.propertyAddress },
+      { label: "Fecha y hora", value: params.dateTime },
+      { label: "Visitante", value: params.visitorName },
+    ],
+    closing: "Accede a tu área privada para confirmar la visita.",
+    cta: OPEN_APP_CTA,
+  })
+}
+
 // Recordatorio (el día antes) — dirigido al COMPRADOR (PC).
 export function visitReminderPcHtml(params: {
   visitorName: string

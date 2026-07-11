@@ -1,4 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.110.0"
+import { sendEmail } from "../_shared/send-email.ts"
+import { ownerNewVisitRequestHtml } from "../_shared/email-templates/visit-status.ts"
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
@@ -8,6 +10,23 @@ const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-api-key, content-type",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+}
+
+function formatMadrid(iso: string): string {
+  const d = new Date(iso)
+  const fecha = new Intl.DateTimeFormat("es-ES", {
+    timeZone: "Europe/Madrid",
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+  }).format(d)
+  const hora = new Intl.DateTimeFormat("es-ES", {
+    timeZone: "Europe/Madrid",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(d)
+  return `${fecha} a las ${hora}`
 }
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -156,13 +175,14 @@ Deno.serve(async (req: Request) => {
   // Get property owner for the notification
   const { data: property, error: propertyError } = await supabase
     .from("properties")
-    .select("user_id")
+    .select("user_id, street, city")
     .eq("id", slot.property_id)
     .maybeSingle()
 
   if (propertyError || !property) {
     console.error("[request-visit-slot] Error obteniendo propietario:", propertyError?.message)
   } else {
+    // 1. Notificación in-app (Realtime) — la campana de la PWA
     const { error: notifError } = await supabase.from("notifications").insert({
       user_id: property.user_id,
       type: "new_visit_request",
@@ -178,6 +198,31 @@ Deno.serve(async (req: Request) => {
 
     if (notifError) {
       console.error("[request-visit-slot] Error insertando notificación:", notifError.message)
+    }
+
+    // 2. Email al propietario (CV) invitándole a confirmar. Best-effort: un
+    //    fallo de email no debe tumbar la reserva (el slot ya está reservado).
+    const { data: owner } = await supabase
+      .from("users")
+      .select("email, first_name")
+      .eq("id", property.user_id)
+      .maybeSingle()
+
+    if (owner?.email) {
+      const address = [property.street, property.city].filter(Boolean).join(", ") || "tu vivienda"
+      const emailRes = await sendEmail({
+        to: owner.email,
+        subject: "Tienes una nueva solicitud de visita",
+        html: ownerNewVisitRequestHtml({
+          ownerName: owner.first_name ?? undefined,
+          visitorName: `${visitor_name} ${visitor_last_name}`,
+          propertyAddress: address,
+          dateTime: formatMadrid(slot.start_time),
+        }),
+      })
+      if (!emailRes.success) {
+        console.error("[request-visit-slot] Email al propietario falló:", emailRes.error)
+      }
     }
   }
 
