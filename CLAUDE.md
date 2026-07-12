@@ -207,7 +207,7 @@ src/
 
 **Pendiente operacional antes del lanzamiento (no código):**
 - ⚠️ **Meta → modo Live** (CRÍTICO): la app de Meta está en modo Desarrollo. Solo números de prueba autorizados reciben WhatsApp. Hasta activar "Live mode" (verificación de empresa), compradores reales no recibirán nada. Requiere: completar Business Verification en Meta + solicitar Live mode.
-- ✅ **Ingesta de leads de Idealista**: migrada de Make Esc. 2 a **Google Apps Script** (9 jul 2026) y validada e2e con lead real (email real → conversación creada 201). Ver Registro de sesiones. Antes de abrir a más viviendas: vaciar `ALLOWED_SF_ID` en el script.
+- ✅ **Ingesta de leads de Idealista — EN PRODUCCIÓN** (12 jul 2026): Google Apps Script con `ALLOWED_SF_IDS = []` procesa los leads de todas las viviendas dadas de alta en Supabase (reemplaza a Make Esc. 2). Datos de prueba borrados; quedan solo las 2 viviendas reales. Ver Registro de sesiones.
 - 🧹 **Limpieza opcional** (no bloqueante): (a) borrar datos de prueba (visitas/conversaciones de Roberto y Carlos en vivienda Santander + slot "mañana" del test de B7); (b) eliminar secret `MAKE_WEBHOOK_NOTIFY_VISIT` (obsoleto en v3.1); (c) desactivar/eliminar escenario Make `whatsapp-herohome-inbound` (obsoleto v3.0); (d) eliminar secret `OPENAI_API_KEY` (nunca se usó en v3.1).
 
 **B12 — QA y Lanzamiento: 🔄 EN CURSO** — ✅ higiene de secretos (Resend rotada, obsoletos borrados, `.env` fuera de git — 2 jul); ✅ revisión RLS (sólida; hardening aplicado 2 jul); ✅ pen test de endpoints (HMAC + x-api-key + JWT sin agujeros, 2 jul; falta solo aislamiento cruzado CV↔CV con datos reales); ✅ monitoring v1 (alertas email en los 3 crons, 2 jul) **+ agentes user-facing cableados con alertTeam (5 jul)**; ✅ dead-man's-switch de crons construido (6 jul — pendiente operativo: crear los 5 checks en Healthchecks.io y pegar las Ping URLs en `app_config`); ✅ tests de piezas deterministas + CI (6 jul)
@@ -227,6 +227,23 @@ src/
 ---
 
 ## Registro de sesiones
+
+### 12 julio 2026 — Ingesta de Idealista a PRODUCCIÓN + limpieza de datos de prueba 🚀
+
+- **Script de ingesta a producción:** `ALLOWED_SF_IDS` (candado de modo prueba en el Apps Script) vaciado a `[]`. A partir de ahora procesa los leads de **todas** las viviendas dadas de alta en Supabase; el "permitido" real pasa a ser el alta en Supabase (si la vivienda no existe, `process-idealista-lead` alerta y NO envía). Durante el rollout controlado la lista fue creciendo (Torrecaballeros → +Alaquàs → +Calle la Era), validando e2e con compradores reales (bienvenida entregada + conversación + agenda de visitas). El `.gs` del repo (`apps-script/idealista-lead-inbound.gs`) sigue **sin commitear** (lleva la `HEROHOME_API_KEY`).
+- **Limpieza de datos de prueba (por SQL, aplicado por el usuario):** borradas las 3 viviendas de prueba — Torrecaballeros `001aA00000cAoFOQA0`, Madrid/Gabriela Mistral `001aA00000cBFQzQAO`, Parla `001aA00000cGh9cQAC` — junto con sus propietarios de **Auth** → cascada limpia (auth.users → users → properties → visit_slots/availability_config/offers, + notifications/pwa_chat_sessions). ⚠️ Previo obligatorio: borrar antes las `whatsapp_conversations` de esas viviendas (la FK `whatsapp_conversations.property_id → properties` es **NO ACTION**, bloquea el borrado). Anuncios de prueba **despublicados de Idealista** (si no, sus leads generan alertas de "vivienda no encontrada"). Quedan SOLO las 2 reales: **Calle la Era** (Villamanrique) y **Sant Lluís Gonzaga** (Alaquàs).
+- **Hallazgo — conversaciones duplicadas + doble bienvenida:** 2 compradores de Alaquàs tenían conversación duplicada porque el dedup de `process-idealista-lead` es SELECT-then-INSERT y hubo **ejecuciones concurrentes** (correr `testRun` del Apps Script a la vez que el trigger de cada minuto). Limpiadas a mano. ⚠️ **Regla operativa: no ejecutar `testRun` con el trigger activo.** Tarea abierta: índice único `(wa_phone_number, property_id)` + invertir a insert-then-send (en curso).
+- **Tarea de `statuses` de WhatsApp:** COMPLETADA y en `main` (commit `5c0bccd`) — el `whatsapp-agent` ya procesa los callbacks de estado de entrega de Meta.
+
+### 12 julio 2026 — Doc de funcionamiento (`FUNCIONAMIENTO.md`) + email al CV en solicitud de visita 📄✉️
+
+**Dos entregas en este repo (el grueso de la sesión fue montar el sistema de marketing en el repo aparte `~/Projects/herohome-marketing`, que no toca este repo).**
+
+- **Nuevo `docs/FUNCIONAMIENTO.md`:** documentación funcional + técnica de alto nivel de TODO el sistema, pensada como fuente única para evolutivos y para generar skills/agentes (marketing, cualificación de leads…). Cubre: actores, mapa de sistemas y flujo de datos, el ciclo de venta completo (alta CV → Idealista → WhatsApp+gate honorarios → visitas → ofertas → arras), qué se puede/no en la PWA, los dos agentes de Hero con sus guardarraíles, **catálogo de mensajería** (asuntos y textos planos de emails, plantillas WhatsApp, mensajes fijos del agente, notificaciones in-app), seguridad/privacidad, avisos ante fallos, dashboard, crons y límites de diseño. Excluye a propósito el histórico y el detalle técnico profundo (código, mapeos, clase Apex se nombra pero sin código). **Es documentación derivada del código a fecha de hoy**: si el comportamiento cambia, re-derivar.
+- **Nuevo email al propietario cuando un comprador SOLICITA visita** (`request-visit-slot`). Antes solo había notificación in-app (campana); el usuario pidió email además. Ahora al reservar (`Pending to confirm`), además del `notifications` in-app, se envía email al CV vía Resend: asunto **"Tienes una nueva solicitud de visita"**, cuerpo *"Hola {nombre}, un comprador ha solicitado una visita a tu vivienda y está esperando tu confirmación."* + ficha (vivienda, fecha/hora, visitante) + **botón "Abrir aplicación" → app.herohome.es** (`OPEN_APP_CTA`). Nueva plantilla `ownerNewVisitRequestHtml` en `_shared/email-templates/visit-status.ts`; envío **best-effort** (un fallo de email no tumba la reserva, ya confirmada). Mismo patrón que `cancel-visit-by-visitor`/`visit-reminders`.
+  - **Asimetría resuelta:** la solicitud de visita era de los pocos eventos al CV que se quedaban solo en la campana (oferta, cancelación de confirmada y recordatorio ya llevaban email). Ahora también avisa por email.
+  - **Desplegado y validado:** commit `5755148` → push a `main` → GitHub Action **Deploy success (28s)** + **Tests success**. `request-visit-slot` en vivo con el email. `FUNCIONAMIENTO.md` actualizado (§4.5 y tabla §7.1). ⚠️ El commit dejó fuera `apps-script/` (lleva la `HEROHOME_API_KEY` hardcodeada) y `.claude/launch.json` (temporal).
+  - **Nota de mantenimiento (no urgente):** la Action avisó de que Node.js 20 quedará deprecado en los runners de GitHub → en algún momento actualizar `actions/checkout` y `supabase/setup-cli` en `deploy.yml`/`test.yml`.
 
 ### 9 julio 2026 — Ingesta de leads de Idealista: Make Esc. 2 → Google Apps Script + robustez de los agentes 📥
 
@@ -533,6 +550,7 @@ Con la env var ya corregida, el primer clic en el magic link SÍ autenticaba cor
 ## Documentos de referencia
 
 - `ARCHITECTURE_V3_DECISIONS.md` — decisiones arquitectónicas v3.1 (en este repo, AUTORITATIVO).
+- `docs/FUNCIONAMIENTO.md` — funcionamiento funcional + técnico de alto nivel de todo el sistema (flujos, mensajería con textos, agentes, avisos). Fuente única para evolutivos y para dar contexto a skills/agentes. Derivado del código; re-derivar si cambia el comportamiento.
 - `docs/AGENT.md` — diseño del agente conversacional Hero (WhatsApp): persona, objetivos, reglas, tools, loop.
 - `docs/SPEC.md` — especificación técnica (revisar contra v3.1 antes de usar).
 - **Plan de tareas v3.1** — Google Sheets (hojas: Plan v3.1 / Cambios v3.0→v3.1 / Camino crítico / Resumen).
