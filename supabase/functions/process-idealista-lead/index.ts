@@ -201,27 +201,39 @@ Deno.serve(async (req: Request) => {
   }
 
   const waPhoneNumber = normalizePhone(extracted.phone)
-
-  const { data: existingConversation, error: existingError } = await supabase
-    .from("whatsapp_conversations")
-    .select("id")
-    .eq("wa_phone_number", waPhoneNumber)
-    .eq("property_id", property.id)
-    .maybeSingle()
-
-  if (existingError) {
-    return jsonResponse({ error: existingError.message }, 500)
-  }
-
-  if (existingConversation) {
-    return jsonResponse(
-      { success: true, action: "already_exists", conversation_id: existingConversation.id },
-      200
-    )
-  }
-
   const propertyLabel = [property.street, property.city].filter(Boolean).join(", ")
 
+  // Dedup insert-then-send: insertamos la conversación PRIMERO, apoyándonos en el
+  // índice único parcial `whatsapp_conversations_phone_property_uidx`
+  // (wa_phone_number, property_id) como barrera real contra carreras. Solo si la
+  // fila se crea de verdad (no hubo conflicto) enviamos la bienvenida. Así el
+  // índice elimina el doble envío que causaba el SELECT-then-INSERT anterior.
+  const now = new Date().toISOString()
+  const { data: inserted, error: insertError } = await supabase
+    .from("whatsapp_conversations")
+    .insert({
+      wa_phone_number: waPhoneNumber,
+      property_id: property.id,
+      messages: [],
+      last_message_at: now,
+    })
+    .select("id")
+    .single()
+
+  // Conflicto con el índice único (23505) => ya existe una conversación para este
+  // comprador+vivienda. Otra invocación ganó la carrera (o es un lead repetido):
+  // NO reenviamos la bienvenida.
+  if (insertError) {
+    if (insertError.code === "23505") {
+      return jsonResponse(
+        { success: true, action: "already_exists", property_id: property.id, wa_phone_number: waPhoneNumber },
+        200
+      )
+    }
+    return jsonResponse({ error: insertError.message }, 500)
+  }
+
+  // Ganamos la inserción: enviamos la plantilla de bienvenida.
   const whatsappResult = await sendWhatsAppTemplate({
     to: waPhoneNumber,
     templateName: WHATSAPP_WELCOME_TEMPLATE_NAME,
@@ -229,6 +241,11 @@ Deno.serve(async (req: Request) => {
   })
 
   if (!whatsappResult.success) {
+    // El envío falló: deshacemos la fila que acabamos de crear para no dejar una
+    // conversación fantasma que bloquee un reintento (el Apps Script reintenta el
+    // hilo mientras no reciba 2xx). Así un fallo transitorio de WhatsApp no impide
+    // que la bienvenida acabe llegando en el siguiente tick.
+    await supabase.from("whatsapp_conversations").delete().eq("id", inserted.id)
     await sendAlert(
       `No se ha podido enviar la plantilla de bienvenida de WhatsApp: ${whatsappResult.error}`,
       body.subject,
@@ -238,12 +255,10 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ success: false, alerted: true, extracted, whatsapp_error: whatsappResult.error }, 200)
   }
 
-  const now = new Date().toISOString()
-  const { data: inserted, error: insertError } = await supabase
+  // Bienvenida enviada: registramos la nota en el historial de la conversación.
+  const { error: updateError } = await supabase
     .from("whatsapp_conversations")
-    .insert({
-      wa_phone_number: waPhoneNumber,
-      property_id: property.id,
+    .update({
       messages: [
         {
           role: "assistant",
@@ -253,11 +268,10 @@ Deno.serve(async (req: Request) => {
       ],
       last_message_at: now,
     })
-    .select("id")
-    .single()
+    .eq("id", inserted.id)
 
-  if (insertError) {
-    return jsonResponse({ error: insertError.message }, 500)
+  if (updateError) {
+    console.error(`[process-idealista-lead] No se pudo registrar la nota de bienvenida: ${updateError.message}`)
   }
 
   return jsonResponse(
