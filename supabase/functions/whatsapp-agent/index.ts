@@ -703,17 +703,28 @@ async function callClaude(system: string, messages: unknown[]): Promise<Anthropi
   throw new Error(lastErr)
 }
 
-function buildSystemPrompt(property: { street?: string; city?: string; sales_price?: number } | null, buyerContext: string): string {
+function buildSystemPrompt(property: { street?: string; city?: string; sales_price?: number; special_conditions?: string | null } | null, buyerContext: string): string {
   const propertyContext = property
     ? `La vivienda sobre la que está consultando este comprador es: ${[property.street, property.city]
         .filter(Boolean)
         .join(", ")}${property.sales_price ? `, precio ${property.sales_price} €` : ""}.`
     : "Todavía no hay una vivienda asociada a esta conversación: si el comprador pregunta por una vivienda concreta, indícale que te escriba desde el anuncio de Idealista correspondiente para poder ayudarle."
 
+  // Condiciones especiales de la vivienda/venta (VPO, fechas, etc.): si existen,
+  // Hero debe informar de ellas ANTES de mostrar horarios y confirmar el interés.
+  const specialConditions = property?.special_conditions?.trim()
+  const specialConditionsContext = specialConditions
+    ? `\nATENCIÓN — esta vivienda tiene CONDICIONES ESPECIALES: «${specialConditions}»
+- La PRIMERA vez que el comprador muestre interés en visitar la vivienda (antes de llamar a get_available_slots y mostrar horarios), infórmale de estas condiciones citándolas tal cual (sin parafrasearlas ni suavizarlas) y pregúntale si, sabiéndolo, sigue interesado en visitarla.
+- Solo si confirma que sigue interesado, continúa con el flujo normal de visita. Si dice que no le encaja, agradéceselo y despídete amablemente, sin insistir.
+- Si en esta conversación ya le informaste de estas condiciones, NO se lo repitas en turnos posteriores.
+- Si el comprador pregunta dudas sobre estas condiciones que no puedas responder con lo que dice el texto, aplica la regla de escalado a una persona del equipo.\n`
+    : ""
+
   return `Eres Hero, el asistente conversacional de Herohome, una inmobiliaria. Hablas por WhatsApp con un potencial comprador (PC) interesado en una vivienda. Responde siempre en español, con un tono cercano, profesional y breve (mensajes cortos, propios de WhatsApp).
 
 ${propertyContext}
-${buyerContext ? `\n${buyerContext}\n` : ""}
+${specialConditionsContext}${buyerContext ? `\n${buyerContext}\n` : ""}
 Tu objetivo es ayudar al comprador a consultar disponibilidad de visitas, reservar una, cancelar o reagendar su visita, y registrar una oferta de compra si decide comprar.
 
 Cómo funciona comprar con Herohome (para orientar al comprador si lo pregunta):
@@ -1112,11 +1123,11 @@ async function processMessage(
       return
     }
 
-    let property: { street?: string; city?: string; sales_price?: number; buyer_fee_percent?: number | string | null } | null = null
+    let property: { street?: string; city?: string; sales_price?: number; buyer_fee_percent?: number | string | null; special_conditions?: string | null } | null = null
     if (propertyId) {
       const { data } = await supabase
         .from("properties")
-        .select("street, city, sales_price, buyer_fee_percent")
+        .select("street, city, sales_price, buyer_fee_percent, special_conditions")
         .eq("id", propertyId)
         .maybeSingle()
       property = data

@@ -143,12 +143,18 @@ guardarraíles completos en §6.1). El flujo de reserva:
 
 1. Hero conoce la vivienda vinculada a ese teléfono (dirección y precio). Si un teléfono escribe
    sin vivienda vinculada, Hero no opera: le pide que contacte desde el anuncio de Idealista.
-2. El comprador pide horarios → Hero consulta los huecos libres y se los muestra agrupados por día
+2. **Condiciones especiales de la vivienda** (si las hay): si la vivienda tiene rellena la columna
+   `special_conditions` (p.ej. "es VPO y el comprador debe cumplir los requisitos de su CCAA" o
+   "el propietario no venderá antes de diciembre de 2026"), Hero informa de ellas **citándolas tal
+   cual** la primera vez que el comprador muestra interés en visitarla, ANTES de mostrar horarios,
+   y le pregunta si sigue interesado. Solo si confirma continúa el flujo; si no le encaja, se
+   despide sin insistir. La columna se edita a mano en el Table Editor; vacía = flujo normal.
+3. El comprador pide horarios → Hero consulta los huecos libres y se los muestra agrupados por día
    (máximo los 15 más próximos; si hay más, lo dice).
-3. Para reservar, Hero exige: **nombre, apellidos, email (obligatorio)** y **consentimiento
+4. Para reservar, Hero exige: **nombre, apellidos, email (obligatorio)** y **consentimiento
    explícito a los términos y condiciones** (RGPD, enlace a herohome.es/terminos-y-condiciones).
    El DNI **no** se pide para visitar (solo al ofertar).
-4. **Gate de honorarios del comprador** (paso determinista, fuera del LLM): antes de registrar la
+5. **Gate de honorarios del comprador** (paso determinista, fuera del LLM): antes de registrar la
    solicitud, el sistema envía un mensaje **verbatim** (no lo redacta la IA) con la comisión de esa
    vivienda — ver texto exacto en §7.3. El comprador debe aceptar de forma inequívoca:
    - Acepta ("sí", "acepto", "vale", "ok", "de acuerdo"…) → se registra el consentimiento en la
@@ -160,7 +166,7 @@ guardarraíles completos en §6.1). El flujo de reserva:
    - Si la vivienda tiene comisión de comprador del **0%**, el gate se salta y se reserva directo.
    - Durante el gate, el hueco **no** se bloquea (sigue libre). Si al aceptar el hueco ya se ha
      ocupado, se le ofrecen otros. Un gate sin respuesta se limpia a las 24h sin avisar al PC.
-5. La reserva pone el hueco en **`Pending to confirm`** y el propietario recibe aviso por dos
+6. La reserva pone el hueco en **`Pending to confirm`** y el propietario recibe aviso por dos
    vías: una **notificación in-app en tiempo real** en la PWA ("Nueva solicitud de visita") y un
    **email** con asunto **"Tienes una nueva solicitud de visita"** (vivienda, fecha/hora y
    visitante, con botón para acceder a la app y confirmarla). Hero informa al comprador de que el
@@ -570,6 +576,12 @@ Panel **de solo lectura** para el equipo, en producción:
   como administradoras. Una cuenta no admin es expulsada tras el login.
 - **Sección "Para hoy":** visitas de hoy (en cualquier estado), solicitudes de visita pendientes
   de confirmar y ofertas presentadas **indicando a quién le toca responder**.
+- **Sección "Conversaciones WhatsApp":** todas las conversaciones de Hero con los compradores,
+  ordenadas por actividad reciente. Cada conversación se despliega en una vista tipo chat
+  (burbujas comprador/Hero con fecha y hora), con el teléfono, el nombre del comprador si se
+  conoce (por sus visitas u ofertas) y la vivienda asociada. Da visibilidad a las conversaciones
+  que no acaban en visita. (Nota: el número de WhatsApp está en Cloud API y no puede usarse en
+  WhatsApp Web; esta sección es la única forma de leer los hilos.)
 - **Tarjeta por vivienda:** dirección, precio, propietario con teléfono y email, honorarios,
   visitas con su estado y el feedback post-visita, y ofertas con la cadena de negociación
   completa.
