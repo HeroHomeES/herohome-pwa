@@ -184,10 +184,12 @@ CREATE INDEX IF NOT EXISTS idx_visit_slots_postvisit
 |---|---|---|
 | `post_visita` | {{1}} nombre, {{2}} dirección | "Hola {{1}} 👋 ¿Qué te ha parecido la visita a {{2}}? Si quieres hacer una oferta o tienes cualquier duda, escríbeme por aquí y te ayudo." |
 | `oferta_aceptada` | {{1}} nombre, {{2}} importe, {{3}} dirección | "¡Enhorabuena {{1}}! 🎉 El propietario ha aceptado tu oferta de {{2}} por {{3}}. Nos pondremos en contacto contigo para los siguientes pasos (arras y firma)." |
-| `oferta_rechazada` | {{1}} nombre, {{2}} dirección | "Hola {{1}}, el propietario no ha aceptado tu oferta por {{2}}. Si quieres, puedes proponer una nueva oferta por aquí." |
+| `oferta_no_aceptada` ⚠️ | {{1}} nombre, {{2}} dirección | "Hola {{1}} 👋 Te informamos de que el propietario no ha aceptado tu oferta por la vivienda de {{2}}. Sentimos no traerte mejores noticias" |
 | `contraoferta` | {{1}} nombre, {{2}} importe, {{3}} dirección | "Hola {{1}}, el propietario ha hecho una contraoferta de {{2}} por {{3}}. ¿Quieres aceptarla, rechazarla y cerrar la negociación, o hacer una nueva oferta? Escríbeme por aquí." |
 
-> Copys a afinar. Convención obligatoria: idioma **es_ES** (`send-whatsapp.ts` envía es_ES por defecto). Dentro de la ventana de 24h hay fallback a texto libre, pero el disparo proactivo siempre necesita plantilla aprobada.
+> Convención obligatoria: idioma **es_ES** (`send-whatsapp.ts` envía es_ES por defecto). Dentro de la ventana de 24h hay fallback a texto libre, pero el disparo proactivo siempre necesita plantilla aprobada.
+>
+> ⚠️ **La plantilla de rechazo debe ser categoría Utility/Servicio en Meta, nunca Marketing.** Las plantillas de Marketing sufren límites de frecuencia y filtrado de Meta y pueden **descartarse en silencio** fuera de la ventana de 24h. La antigua `oferta_rechazada` acabó recategorizada a Marketing por incluir un gancho de reenganche ("…puedes proponer una nueva oferta por aquí") y dejó de entregarse. Se sustituyó por **`oferta_no_aceptada`**, con texto puramente informativo (sin CTA), para que Meta la mantenga en Servicio. Regla general: **cero invitaciones a reofertar ni lenguaje persuasivo en las plantillas**; el reenganche se hace en conversación (texto libre) cuando el comprador responde. Meta recategoriza según el contenido y no permite forzar la categoría editando: si hay que cambiarla, se crea una plantilla **nueva** (nombre distinto, porque reutilizar el de una borrada queda bloqueado un tiempo) y se actualiza la constante `TEMPLATE_DENIED` en `manage-offer`.
 
 ---
 
@@ -211,7 +213,7 @@ Plantillas HTML nuevas en `supabase/functions/_shared/email-templates/` (brandin
 ## 9. Orden de construcción sugerido (por piezas)
 
 1. **Migración de BD** (sección 3) — base de todo.
-2. **manage-offer + refactor `useOffers`** — el CV decide y el PC se entera (WhatsApp+email) + email equipo. Requiere plantillas `oferta_aceptada` / `oferta_rechazada` / `contraoferta`.
+2. **manage-offer + refactor `useOffers`** — el CV decide y el PC se entera (WhatsApp+email) + email equipo. Requiere plantillas `oferta_aceptada` / `oferta_no_aceptada` / `contraoferta`.
 3. **create-offer + tool en Hero + contexto del comprador** — el PC oferta por WhatsApp (gate honorarios + email equipo).
 4. **Respuesta del PC a la contraoferta** (`respond_to_counteroffer`) — cierra el ciclo de negociación.
 5. **Post-visita** (cron + `post-visit-followup` + plantilla `post_visita` + Hero toma riendas + feedback). Requiere que 3 ya exista (a dónde llevar al PC).
@@ -231,3 +233,9 @@ Plantillas HTML nuevas en `supabase/functions/_shared/email-templates/` (brandin
 - Contraoferta: **ciclo completo multi-vuelta** PC↔CV.
 - Feedback "no me interesa": se recoge en `visit_slots` (`post_visit_outcome` + `post_visit_feedback`); Hero **sintetiza** el motivo (no necesariamente literal).
 - Email al equipo (hola@herohome.es) en **cada evento** de oferta, como interim del dashboard (B8 sigue aplazado).
+
+### Robustez (endurecido tras incidencia de jul-2026)
+
+- **Anti-duplicado en `create-offer`:** una oferta nueva del comprador **cierra (`Denied`) su oferta previa en `Presented`** sobre la misma vivienda. Antes no había control y una doble llamada del agente (o una oferta nueva) dejaba dos ofertas activas del mismo comprador a la vez.
+- **`manage-offer` deja rastro en el panel:** tras avisar al comprador, registra una nota del sistema en `whatsapp_conversations` (rol `assistant`). Antes `manage-offer` enviaba plantilla + email pero **no** escribía en la conversación, así que el aviso de oferta era invisible en admin.
+- **Fin del fallo silencioso:** si el WhatsApp al comprador no se entrega, el email interino al equipo lo resalta en el asunto (`⚠️ WhatsApp no entregado`) y con una nota, indicando si al menos llegó el email o si hay que contactar a mano. Antes un fallo de entrega solo quedaba en un `console.error`.

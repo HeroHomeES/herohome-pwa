@@ -259,14 +259,19 @@ Al registrarse la oferta (estado `Presented`, iniciada por `Buyer`):
 
 **El propietario decide (desde la PWA, sección Ofertas).** Tres botones — aceptar, rechazar,
 contraofertar — que pasan por la Edge Function **`manage-offer`** (la app nunca escribe
-directamente en la tabla). En los tres casos se avisa al comprador por WhatsApp + email y al
-equipo por email:
+directamente en la tabla). En los tres casos se avisa al comprador por WhatsApp y —**solo si
+tiene email registrado** (`buyer_email`, que se toma de su visita)— también por email. El equipo
+siempre recibe email:
 
 | Decisión del CV | Efecto en BD | WhatsApp al PC (plantilla y texto equivalente) | Email al PC (asunto) |
 |---|---|---|---|
 | **Aceptar** | Oferta → `Accepted` | `oferta_aceptada` — *"¡Enhorabuena {nombre}! El propietario ha aceptado tu oferta de {importe} por {dirección}. Nos pondremos en contacto contigo para los siguientes pasos."* | "¡Tu oferta ha sido aceptada!" (menciona arras y firma digital) |
-| **Rechazar** | Oferta → `Denied` | `oferta_rechazada` — *"Hola {nombre}, el propietario no ha aceptado tu oferta por {dirección}. Si quieres, puedes proponer una nueva oferta por aquí."* | "Actualización sobre tu oferta" |
+| **Rechazar** | Oferta → `Denied` | `oferta_no_aceptada` — *"Hola {nombre} 👋 Te informamos de que el propietario no ha aceptado tu oferta por la vivienda de {dirección}. Sentimos no traerte mejores noticias"* | "Actualización sobre tu oferta" |
 | **Contraofertar** | Oferta del PC → `Denied` + nueva oferta ligada iniciada por `Owner` | `contraoferta` — *"Hola {nombre}, el propietario ha hecho una contraoferta de {importe} por {dirección}. ¿Quieres aceptarla, rechazarla y cerrar la negociación, o hacer una nueva oferta? Escríbeme por aquí."* | "Has recibido una contraoferta" (le deriva a WhatsApp) |
+
+> ⚠️ El **email al PC** de la columna anterior solo se envía si el comprador tiene `buyer_email`.
+> Quien ofertó sin email registrado (p. ej. si no lo dejó en la visita) recibe únicamente el aviso
+> por WhatsApp. El WhatsApp se intenta siempre que haya `buyer_phone`.
 
 Email al equipo en los tres casos: **"[Ofertas] {Oferta aceptada / Oferta rechazada /
 Contraoferta enviada} — {dirección}"**.
@@ -460,7 +465,7 @@ textos de la tabla). Ninguna lleva botones: el comprador responde con texto libr
 | `recordatorio_visita` | La mañana del día anterior a una visita confirmada | {{1}} nombre, {{2}} fecha, {{3}} dirección | Recordatorio de la visita de mañana {{2}} en {{3}} |
 | `post_visita` | ~1 hora después de terminar la visita | {{1}} nombre, {{2}} dirección | "Hola {{1}} 👋 ¿Qué te ha parecido la visita a {{2}}? Si quieres hacer una oferta o tienes cualquier duda, escríbeme por aquí y te ayudo." |
 | `oferta_aceptada` | El CV acepta la oferta | {{1}} nombre, {{2}} importe, {{3}} dirección | "¡Enhorabuena {{1}}! 🎉 El propietario ha aceptado tu oferta de {{2}} por {{3}}. Nos pondremos en contacto contigo para los siguientes pasos (arras y firma)." |
-| `oferta_rechazada` | El CV rechaza la oferta | {{1}} nombre, {{2}} dirección | "Hola {{1}}, el propietario no ha aceptado tu oferta por {{2}}. Si quieres, puedes proponer una nueva oferta por aquí." |
+| `oferta_no_aceptada` | El CV rechaza la oferta (categoría **Servicio** — no Marketing) | {{1}} nombre, {{2}} dirección | "Hola {{1}} 👋 Te informamos de que el propietario no ha aceptado tu oferta por la vivienda de {{2}}. Sentimos no traerte mejores noticias" |
 | `contraoferta` | El CV contraoferta | {{1}} nombre, {{2}} importe, {{3}} dirección | "Hola {{1}}, el propietario ha hecho una contraoferta de {{2}} por {{3}}. ¿Quieres aceptarla, rechazarla y cerrar la negociación, o hacer una nueva oferta? Escríbeme por aquí." |
 
 > El copy exacto y vigente de cada plantilla vive en el WABA de Meta (las plantillas pertenecen a

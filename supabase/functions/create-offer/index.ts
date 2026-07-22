@@ -147,6 +147,20 @@ Deno.serve(async (req: Request) => {
     await supabase.from("offers").update({ status: "Denied", updated_at: now }).eq("id", ownerOffer.id)
   }
 
+  // 4b. Cerrar cualquier oferta previa del PROPIO comprador que siga viva
+  //     (Presented) sobre esta vivienda. Una oferta nueva sustituye a la anterior:
+  //     así no se acumulan varias ofertas activas del mismo comprador (evita los
+  //     duplicados por doble llamada del agente y deja siempre una única fuente de
+  //     verdad). No toca ofertas de otros compradores ni la contraoferta del
+  //     propietario (ya gestionada arriba, initiated_by="Owner").
+  await supabase
+    .from("offers")
+    .update({ status: "Denied", updated_at: now })
+    .eq("property_id", property_id)
+    .eq("buyer_phone", wa_phone_number)
+    .eq("initiated_by", "Buyer")
+    .eq("status", "Presented")
+
   // 5. Alta de la oferta
   const { data: inserted, error: insertError } = await supabase
     .from("offers")

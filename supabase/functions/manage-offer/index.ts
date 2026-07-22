@@ -18,10 +18,12 @@ const TEAM_EMAIL = "hola@herohome.es"
 
 // Plantillas de WhatsApp (deben existir y estar aprobadas en Meta, es_ES):
 //   oferta_aceptada  → {{1}} nombre, {{2}} importe, {{3}} dirección
-//   oferta_rechazada → {{1}} nombre, {{2}} dirección
+//   oferta_no_aceptada → {{1}} nombre, {{2}} dirección  (categoría Servicio/Utility;
+//     sustituye a la antigua `oferta_rechazada`, que Meta recategorizaba a Marketing
+//     y no se entregaba de forma fiable fuera de la ventana de 24 h)
 //   contraoferta     → {{1}} nombre, {{2}} importe, {{3}} dirección
 const TEMPLATE_ACCEPTED = "oferta_aceptada"
-const TEMPLATE_DENIED = "oferta_rechazada"
+const TEMPLATE_DENIED = "oferta_no_aceptada"
 const TEMPLATE_COUNTER = "contraoferta"
 
 function formatEuros(amount: number): string {
@@ -50,6 +52,36 @@ function decodeJwtSub(authHeader: string | null): string | null {
     return typeof payload.sub === "string" ? payload.sub : null
   } catch {
     return null
+  }
+}
+
+// Registra una nota del sistema en el hilo de WhatsApp del comprador para que el
+// aviso de oferta sea visible en el panel de admin (manage-offer envía plantilla +
+// email pero, hasta ahora, no dejaba rastro en la conversación). Si no existe una
+// conversación para ese comprador+vivienda, no crea ninguna: simplemente no anota.
+async function appendConversationNote(
+  supabase: ReturnType<typeof createClient>,
+  phone: string,
+  propertyId: string,
+  content: string,
+  ts: string
+): Promise<void> {
+  const { data: convo } = await supabase
+    .from("whatsapp_conversations")
+    .select("id, messages")
+    .eq("wa_phone_number", phone)
+    .eq("property_id", propertyId)
+    .order("last_message_at", { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (!convo) return
+  const current = Array.isArray(convo.messages) ? convo.messages : []
+  const { error } = await supabase
+    .from("whatsapp_conversations")
+    .update({ messages: [...current, { role: "assistant", content, ts }], last_message_at: ts })
+    .eq("id", convo.id)
+  if (error) {
+    console.error(`[manage-offer] No se pudo registrar la nota en la conversación: ${error.message}`)
   }
 }
 
@@ -224,10 +256,47 @@ Deno.serve(async (req: Request) => {
     result.email = email.success ? "sent" : `failed: ${email.error}`
   }
 
-  // 6. Aviso interno al equipo (interim del dashboard, B8)
+  // 5b. Dejar constancia del aviso en el hilo de WhatsApp del comprador (visible en
+  //     el panel) y detectar si el WhatsApp NO se pudo entregar.
+  const whatsappFailed = result.whatsapp?.startsWith("failed") ?? false
+  const buyerNotice =
+    action === "accept"
+      ? "el propietario ha ACEPTADO su oferta"
+      : action === "deny"
+        ? "el propietario NO ha aceptado su oferta"
+        : `el propietario ha hecho una CONTRAOFERTA de ${formatEuros(eventAmount)}`
+  const waLabel =
+    result.whatsapp === null
+      ? "sin teléfono"
+      : whatsappFailed
+        ? `NO entregado (${result.whatsapp})`
+        : "entregado"
+  const emailLabel =
+    result.email === null ? "sin email" : result.email === "sent" ? "enviado" : result.email
+
+  if (offer.buyer_phone) {
+    await appendConversationNote(
+      supabase,
+      offer.buyer_phone,
+      offer.property_id,
+      `[${eventLabel}] Aviso al comprador: ${buyerNotice}. WhatsApp: ${waLabel}; email: ${emailLabel}.`,
+      nowIso
+    )
+  }
+
+  // 6. Aviso interno al equipo (interim del dashboard, B8). Si el WhatsApp al
+  //    comprador no se entregó, se resalta con una nota para que el equipo le
+  //    avise a mano (antes este fallo era silencioso: solo un console.error).
+  const teamNote = whatsappFailed
+    ? `⚠️ El aviso por WhatsApp al comprador NO se entregó (${result.whatsapp}). ${
+        result.email === "sent"
+          ? "Sí se le envió por email."
+          : "Tampoco se le pudo enviar por email: contáctale manualmente."
+      }`
+    : undefined
   await sendEmail({
     to: TEAM_EMAIL,
-    subject: `[Ofertas] ${eventLabel} — ${address}`,
+    subject: `[Ofertas] ${eventLabel}${whatsappFailed ? " ⚠️ WhatsApp no entregado" : ""} — ${address}`,
     html: teamOfferAlertHtml({
       eventLabel,
       propertyAddress: address,
@@ -236,6 +305,7 @@ Deno.serve(async (req: Request) => {
       buyerPhone: offer.buyer_phone,
       buyerEmail: offer.buyer_email,
       buyerDni: offer.buyer_dni,
+      note: teamNote,
     }),
   })
 
