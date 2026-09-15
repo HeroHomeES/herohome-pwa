@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<!--
+  EMAIL 1 — Inmediato (al recibir el formulario de valoración)
+  Asunto: Gracias — empezamos con la valoración de tu vivienda
+  Variables dinámicas: {{firstName}} (fallback: sin nombre → "¡Hola!")
+  Enlaces PLACEHOLDER a confirmar: https://herohome.es/#precios, WhatsApp 630751595
+-->
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <title>Gracias por tu solicitud de valoración</title>
+</head>
+<body style="margin:0;padding:0;background-color:#F8FAFC;font-family:Inter,system-ui,-apple-system,sans-serif;">
+
+  <!-- Preheader (texto de vista previa en la bandeja, oculto en el cuerpo) -->
+  <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:#F8FAFC;font-size:1px;line-height:1px;">
+    Un experto te contacta en menos de 24 h. Mientras, calcula cuánto puedes ahorrar.
+  </div>
+
+  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#F8FAFC;padding:32px 16px;">
+    <tr>
+      <td align="center">
+        <!-- Card -->
+        <table width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;background-color:#FFFFFF;border-radius:12px;border:1px solid #E2E8F0;">
+
+          <!-- Header -->
+          <tr>
+            <td style="padding:24px;">
+              <table cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td style="vertical-align:top;">
+                    <table cellpadding="0" cellspacing="0" border="0">
+                      <tr>
+                        <td style="vertical-align:top;">
+                          <div style="width:10px;height:40px;border-radius:3px;background-color:#5B5CFF;background-image:linear-gradient(to bottom,#A5A6FF,#3C3ECC);"><!--[if gte mso 9]><v:rect style="width:10px;height:40px;" fillcolor="#5B5CFF" stroked="f"><v:fill type="gradient" color="#A5A6FF" color2="#3C3ECC" angle="270"/></v:rect><![endif]--></div>
+                        </td>
+                        <td style="width:6px;"></td>
+                        <td style="vertical-align:top;padding-top:10px;">
+                          <div style="width:10px;height:30px;border-radius:3px;background-color:#5B5CFF;background-image:linear-gradient(to bottom,#5B5CFF,#282999);"><!--[if gte mso 9]><v:rect style="width:10px;height:30px;" fillcolor="#5B5CFF" stroked="f"><v:fill type="gradient" color="#5B5CFF" color2="#282999" angle="270"/></v:rect><![endif]--></div>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                  <td style="width:12px;"></td>
+                  <td style="vertical-align:middle;">
+                    <span style="font-family:Inter,system-ui,-apple-system,sans-serif;font-size:20px;font-weight:600;letter-spacing:-0.03em;color:#0A0E17;">Herohome</span>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- Separador -->
+          <tr>
+            <td style="padding:0 24px;">
+              <div style="height:1px;background-color:#E2E8F0;"></div>
+            </td>
+          </tr>
+
+          <!-- Cuerpo -->
+          <tr>
+            <td style="padding:32px 24px 8px 24px;">
+
+              <p style="margin:0 0 20px 0;font-family:Inter,system-ui,-apple-system,sans-serif;font-size:24px;font-weight:600;letter-spacing:-0.03em;color:#0A0E17;">¡Gracias por confiar en Herohome, María!</p>
+
+              <p style="margin:0 0 16px 0;font-family:Inter,system-ui,-apple-system,sans-serif;font-size:16px;font-weight:400;line-height:1.6;color:#0A0E17;">
+                Hemos recibido tu solicitud de valoración. Uno de nuestros expertos se pondrá en contacto contigo en <strong style="font-weight:600;">menos de 24 horas</strong> para conocer los detalles de tu vivienda y que la valoración sea lo más precisa posible.
+              </p>
+
+              <p style="margin:0 0 16px 0;font-family:Inter,system-ui,-apple-system,sans-serif;font-size:16px;font-weight:400;line-height:1.6;color:#0A0E17;">
+                Mientras tanto, echa cuentas. Esta es la diferencia:
+              </p>
+
+              <!-- Tabla comparativa de comisiones -->
+              <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 8px 0;">
+                <tr>
+                  <!-- Agencia tradicional -->
+                  <td width="50%" style="padding:0 6px 0 0;vertical-align:top;">
+                    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#F8FAFC;border:1px solid #E2E8F0;border-radius:8px;">
+                      <tr>
+                        <td style="padding:18px 12px;text-align:center;">
+                          <p style="margin:0 0 6px 0;font-family:Inter,system-ui,-apple-system,sans-serif;font-size:13px;font-weight:500;color:#64748B;">Agencia tradicional</p>
+                          <p style="margin:0;font-family:Inter,system-ui,-apple-system,sans-serif;font-size:28px;font-weight:700;letter-spacing:-0.03em;color:#64748B;">4–6%</p>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                  <!-- Herohome -->
+                  <td width="50%" style="padding:0 0 0 6px;vertical-align:top;">
+                    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#EEEEFF;border:1px solid #A5A6FF;border-radius:8px;">
+                      <tr>
+                        <td style="padding:18px 12px;text-align:center;">
+                          <p style="margin:0 0 6px 0;font-family:Inter,system-ui,-apple-system,sans-serif;font-size:13px;font-weight:600;color:#3C3ECC;">Herohome</p>
+                          <p style="margin:0;font-family:Inter,system-ui,-apple-system,sans-serif;font-size:28px;font-weight:700;letter-spacing:-0.03em;color:#5B5CFF;">1%</p>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+
+              <p style="margin:0 0 24px 0;font-family:Inter,system-ui,-apple-system,sans-serif;font-size:12px;font-weight:400;line-height:1.5;color:#94A3B8;text-align:center;">
+                Comisión sobre el precio de venta de tu vivienda.
+              </p>
+
+              <!-- CTA principal -->
+              <table width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td align="center" style="padding:4px 0 8px 0;">
+                    <a href="https://herohome.es/#precios" target="_blank" style="display:inline-block;background-color:#5B5CFF;color:#FFFFFF;font-family:Inter,system-ui,-apple-system,sans-serif;font-size:16px;font-weight:600;text-decoration:none;padding:16px 32px;border-radius:7px;">Calcula cuánto te ahorrarías</a>
+                  </td>
+                </tr>
+              </table>
+
+            </td>
+          </tr>
+
+          <!-- Bloque de contacto WhatsApp -->
+          <tr>
+            <td style="padding:16px 24px 28px 24px;">
+              <div style="height:1px;background-color:#E2E8F0;margin-bottom:20px;"></div>
+              <p style="margin:0 0 12px 0;font-family:Inter,system-ui,-apple-system,sans-serif;font-size:14px;font-weight:400;line-height:1.5;color:#64748B;text-align:center;">
+                ¿Tienes cualquier duda? Escríbenos y te respondemos.
+              </p>
+              <table width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td align="center">
+                    <a href="https://wa.me/34630751595?text=Hola%2C%20he%20solicitado%20una%20valoraci%C3%B3n%20en%20Herohome%20y%20tengo%20una%20duda" target="_blank" style="display:inline-block;background-color:#25D366;color:#FFFFFF;font-family:Inter,system-ui,-apple-system,sans-serif;font-size:15px;font-weight:600;text-decoration:none;padding:12px 24px;border-radius:7px;">💬&nbsp;&nbsp;Escríbenos por WhatsApp</a>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- Pie -->
+          <tr>
+            <td style="background-color:#0A0E17;border-radius:0 0 12px 12px;padding:24px;">
+              <p style="margin:0 0 12px 0;font-family:Inter,system-ui,-apple-system,sans-serif;font-size:13px;color:#94A3B8;text-align:center;">
+                Herohome — Vende tu casa sin agencia &nbsp;·&nbsp;
+                <a href="https://herohome.es" target="_blank" style="color:#5B5CFF;text-decoration:none;">herohome.es</a>
+              </p>
+              <p style="margin:0;font-family:Inter,system-ui,-apple-system,sans-serif;font-size:11px;color:#64748B;line-height:1.5;text-align:center;">
+                Recibes este correo porque solicitaste una valoración en herohome.es.<br />
+                Si no deseas recibir más correos, <a href="mailto:hola@herohome.es?subject=BAJA" style="color:#94A3B8;text-decoration:underline;">date de baja</a>.
+              </p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>

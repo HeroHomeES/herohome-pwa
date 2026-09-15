@@ -45,7 +45,7 @@ vive en **app.herohome.es** (PWA instalable en el móvil).
 | **Supabase** | El **sistema operativo de la venta**: base de datos (PostgreSQL), autenticación, lógica de negocio (Edge Functions) y tareas programadas (crons). Es la fuente de verdad de viviendas (operativo), visitas, ofertas, conversaciones, notificaciones y consentimientos. **Es producción; no hay staging.** |
 | **PWA** (React, hosting Vercel) | La app del propietario. No contiene lógica de negocio: consulta la BD y llama a Edge Functions. |
 | **Salesforce** | Sistema de registro **legal y contractual**, y está **CONGELADO**: no se desarrolla nada nuevo en él. Su único rol operativo: gestionar Leads, y al convertir un cliente, el botón "Enviar acceso PWA" que da de alta al propietario en Supabase. También aloja contratos y firma (Docs/Sign Made Easy). |
-| **Make.com** | Reducido a un único escenario activo: formulario web → Lead en Salesforce. Nada más pasa por Make. (El antiguo escenario de ingesta de Idealista se mantiene configurado pero **inactivo**, solo como fallback.) |
+| **Make.com** | **Ya no se usa: ningún escenario está activo.** El último escenario activo (formulario web → Lead en Salesforce) se ha **desactivado**. Hoy los leads del formulario web llegan al Gmail de Herohome (`hola@herohome.es`) y el equipo crea el Lead en Salesforce **a mano** (Gmail no está integrado con Salesforce). El antiguo escenario de ingesta de Idealista lo sustituyó Google Apps Script (§4.4). Los escenarios quedan configurados pero inactivos, solo como referencia histórica. |
 | **Google Apps Script** | Un script que corre **dentro del propio Gmail de Herohome** (`hola@herohome.es`) ingesta los leads de Idealista y los reenvía a Supabase cada minuto (ver §4.4). Sustituye al antiguo escenario 2 de Make. |
 | **WhatsApp Cloud API** (Meta) | Canal con el comprador. Los mensajes entrantes llegan por webhook directamente a la Edge Function del agente; los salientes se envían por la API (plantillas aprobadas o texto libre). |
 | **Resend** | **Único canal de email transaccional** (a CV, PC y equipo). Las plantillas HTML viven en el código. |
@@ -67,8 +67,17 @@ dashboard (Vercel) y las Edge Functions (GitHub Action).
 
 ### 4.1 Captación del vendedor y alta en la plataforma
 
-1. Un propietario interesado llega por la web corporativa. El formulario web crea un **Lead en
-   Salesforce** (vía Make, Escenario 1).
+1. Un propietario interesado llega por la web corporativa y rellena un formulario (p. ej. la
+   solicitud de valoración de vivienda). Ocurren dos cosas en paralelo:
+   - **Alta comercial (manual):** el aviso del formulario llega al **Gmail de Herohome**
+     (`hola@herohome.es`) y el equipo crea el **Lead en Salesforce a mano** (Gmail no está
+     integrado con Salesforce; Make ya no interviene).
+   - **Secuencia automática de bienvenida (emails):** el formulario llama por **webhook** a la
+     Edge Function **`valuation-sequence`**, que envía por Resend 3 emails al lead —
+     **inmediato**, a las **24 h** y a las **72 h** (programados con `scheduled_at` de Resend).
+     Es independiente del alta en Salesforce; el copy está en §7.1. No guarda estado: una vez
+     lanzada, la secuencia no se puede frenar (decisión de producto). Reply-To y bajas van a
+     `hola@herohome.es`.
 2. El equipo trabaja el lead de forma comercial y, si hay acuerdo, se firma el contrato
    (Salesforce + Docs/Sign Made Easy). El propietario pasa a ser **CV**.
 3. En la ficha del cliente en Salesforce, el equipo pulsa el botón **"Enviar acceso PWA"**. Ese
@@ -432,6 +441,9 @@ verificada de la sesión del propietario — nunca por identificadores que enví
 
 | Evento | Destinatario | Asunto | Contenido (resumen en texto plano) |
 |---|---|---|---|
+| Solicitud de valoración — bienvenida (inmediato) | Lead / PV | **Gracias — empezamos con la valoración de tu vivienda** | Agradece la solicitud e informa de que un experto contactará en menos de 24 h. Muestra el ahorro con una tabla comparativa (agencia tradicional 4–6% vs Herohome 1%) y CTA "Calcula cuánto te ahorrarías" → calculadora de la home (`#precios`). |
+| Solicitud de valoración — seguimiento (+24 h) | Lead / PV | **Vende tu casa a tu ritmo, sin depender de una agencia** | Foco en libertad + tecnología (tú decides cuándo se enseña, qué visitas y ofertas). Incluye captura de "visitas pendientes" de la app y CTA "Descubre cómo funciona" (`#como-funciona`). |
+| Solicitud de valoración — seguimiento (+72 h) | Lead / PV | **Te presento a Hero, tu agente que no duerme** | Presenta a Hero (responde 24/7, agenda visitas, avisa de ofertas). Incluye captura del chat de Hero y CTA "Descubre todo lo que hace Hero" (`#hero-ia`). |
 | Alta del CV (botón de Salesforce) | CV | **¡Bienvenido a Herohome! Accede a tu cuenta** | "¡Hola, {nombre}! Ya eres parte de Herohome. Tu vivienda está en manos del equipo y desde ahora puedes seguir todo el proceso de venta desde tu cuenta personal. En la app encontrarás los datos de tu vivienda, tu calendario de visitas y las ofertas que vayas recibiendo. Hero, nuestro asistente, estará disponible para resolver cualquier duda. Pulsa el botón para acceder a tu cuenta. El enlace es personal y de un solo uso." Botón: "Acceder a mi cuenta" |
 | Login (cada acceso) | CV | **Tu link para acceder a Herohome** | "Pulsa aquí para acceder:" + botón "Ir a Herohome" (lo envía Supabase Auth con plantilla de marca) |
 | Nueva solicitud de visita | CV | **Tienes una nueva solicitud de visita** | "un comprador ha solicitado una visita a tu vivienda y está esperando tu confirmación" + vivienda, fecha/hora y visitante + "Accede a tu área privada para confirmar la visita." + botón a la app |

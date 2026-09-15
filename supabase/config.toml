@@ -22,3 +22,8 @@ verify_jwt = false
 # post-visit-followup lo invoca el cron (pg_cron) con x-api-key, sin JWT de Supabase.
 [functions.post-visit-followup]
 verify_jwt = false
+
+# valuation-sequence la invoca el webhook del formulario de valoración (server-to-server)
+# con x-api-key, sin JWT de Supabase → verify_jwt debe estar en false.
+[functions.valuation-sequence]
+verify_jwt = false
