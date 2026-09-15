@@ -33,7 +33,7 @@ Herohome es la primera agencia inmobiliaria 100% digital de España. Propietario
 | Agente WhatsApp | Edge Function `whatsapp-agent` (Claude Sonnet 4.6, tool calling) — ver `docs/AGENT.md` |
 | CRM | Salesforce Enterprise + Docs/Sign Made Easy — **CONGELADO: no añadir nada** |
 | Email transaccional (CV y PC) | Resend desde Edge Functions (plantillas HTML en código) |
-| Make.com | SOLO Esc. 1 (form web → Lead SF). **Esc. 2 (Idealista) sustituido por Google Apps Script (9 jul 2026)** — inactivo, fallback documentado |
+| Make.com | **DESACTIVADO: ningún escenario activo (15 sep 2026)**. Esc. 1 (form web → Lead SF) desactivado — los leads del formulario llegan a Gmail y el equipo crea el Lead en SF a mano; la secuencia de bienvenida al lead va por `valuation-sequence`. Esc. 2 (Idealista) ya lo sustituyó Google Apps Script (9 jul 2026). Escenarios inactivos, solo referencia histórica |
 | Ingesta leads Idealista | **Google Apps Script** en el buzón `hola@herohome.es` (trigger 1 min) → POST a `process-idealista-lead`. Reemplaza a Make Esc. 2 |
 | WhatsApp | WhatsApp Cloud API (Meta) — webhook apunta a `whatsapp-agent` |
 | IA | Anthropic API — agente WhatsApp `claude-sonnet-4-6`; extracción Idealista `claude-haiku-4-5` |
@@ -84,7 +84,7 @@ Herohome es la primera agencia inmobiliaria 100% digital de España. Propietario
 
 - **PWA:** push a GitHub → Vercel redespliega automáticamente.
 - **Edge Functions:** push a `main` con cambios en `supabase/functions/**` → GitHub Action (`.github/workflows/deploy.yml`) ejecuta `supabase functions deploy`. Secrets del repo: `SUPABASE_ACCESS_TOKEN`, `SUPABASE_PROJECT_ID`.
-- **`config.toml`** presente en `supabase/config.toml`: fija `verify_jwt = false` para `whatsapp-agent`, `process-idealista-lead`, `visit-reminders` y `generate-slots`.
+- **`config.toml`** presente en `supabase/config.toml`: fija `verify_jwt = false` para `whatsapp-agent`, `process-idealista-lead`, `visit-reminders`, `generate-slots`, `post-visit-followup` y `valuation-sequence`.
 - **Deploy manual (fallback):** `supabase functions deploy <nombre-función>`
 
 ---
@@ -148,6 +148,7 @@ src/
 | `chat-with-hero` | HTTP POST desde PWA (JWT del CV) | ✅ B10 validado e2e (25 jun): agente Hero del propietario (Sonnet 4.6, 6 tools) |
 | `manage-visit` | HTTP POST: PWA (JWT) o Hero (x-api-key) | ✅ B10: confirmar/cancelar visita del CV (check propiedad) + notify-visit. Fuente única (front + Hero) |
 | `block-visit-slots` | Tool de chat-with-hero (x-api-key) | ✅ B10: bloquea Available→Not available en un rango (TZ Madrid) |
+| `valuation-sequence` | Webhook del formulario de valoración (x-api-key, verify_jwt=false) | ✅ 15 sep 2026: secuencia de 3 emails al lead (PV) por Resend — inmediato + `scheduled_at` a +24h/+72h. Sin estado en BD. Desplegada (Deploy+Tests verdes) |
 
 ### Secrets de Supabase (estado objetivo v3.1)
 - `RESEND_API_KEY` ✅ ROTADA Y VALIDADA (2 jul 2026; la key vieja expuesta en mayo, borrada)
@@ -166,7 +167,7 @@ src/
 
 | # | Escenario | Estado |
 |---|-----------|--------|
-| 1 | Formulario web → Lead en Salesforce | ✅ Activo |
+| 1 | Formulario web → Lead en Salesforce | ❌ **DESACTIVADO (15 sep 2026)** — los leads del formulario llegan a Gmail y el equipo crea el Lead en SF a mano. La bienvenida automática al lead va por `valuation-sequence` (Resend) |
 | 2 | Gmail Watch (Idealista) → HTTP a process-idealista-lead | ❌ **SUSTITUIDO por Google Apps Script (9 jul 2026)** — desactivar; se mantiene configurado como fallback documentado |
 | 3-6 | Notificaciones vía Gmail | ❌ ELIMINADOS en v3.1 — desactivar Esc. 3 si aún está activo |
 | — | Webhook WhatsApp entrante en Make | ❌ ELIMINADO: el webhook de Meta apunta a whatsapp-agent |
@@ -227,6 +228,21 @@ src/
 ---
 
 ## Registro de sesiones
+
+### 15 septiembre 2026 — Secuencia automática de 3 emails al lead de valoración + Make OFF 📧
+
+**Nueva funcionalidad (desplegada y verificada, commit `14c8f4f`).** Cuando un lead completa el formulario de **valoración de vivienda** en la web, se dispara una secuencia automática de 3 emails de bienvenida. **Make queda totalmente desactivado** (ningún escenario activo): el Esc. 1 (form → Lead SF) se apaga; los leads llegan a Gmail y el equipo crea el Lead en SF a mano; la bienvenida al lead la lleva ahora `valuation-sequence`.
+
+- **Arquitectura elegida (deliberado):** de 3 opciones (A: todo en Supabase con tabla+cron; B: Resend `scheduled_at`; C: Apps Script), se eligió **B** por decisión del usuario de **no guardar el lead** ni necesitar frenar la secuencia. Sin tabla, sin cron, sin estado.
+- **`valuation-sequence` (NUEVA Edge Function, verify_jwt=false, x-api-key):** recibe el lead por **webhook** (`{email, firstName|name}`), envía el email 1 al instante y programa el 2 (**+24 h**) y el 3 (**+72 h**) con `scheduled_at` de Resend (límite real de Resend = **30 días**, no 72 h como se creía). Reply-To → `hola@herohome.es`; `alertTeam` si falla algún envío. 200 siempre (con `ok` flag) para no provocar reintentos del webhook.
+- **`_shared/send-email.ts`:** ampliado con `reply_to` y `scheduled_at` (aditivo, retrocompatible; ahora devuelve `id`).
+- **`_shared/email-templates/valuation-sequence.ts`:** 3 plantillas de marca (Inter, #5B5CFF, logo Pulse, footer oscuro, mobile-first). Email 1 = gracias + <24 h + **tabla comparativa 4–6% (agencia) vs 1% (Herohome)** + CTA calculadora; Email 2 = libertad/tecnología + captura "visitas pendientes" + CTA cómo funciona; Email 3 = "Te presento a Hero" + captura del chat + CTA Hero. Nombre de pila opcional (saludo genérico si falta). Bloque **WhatsApp** (`wa.me/34630751595`, el mismo número de la web) + enlace de **baja** (mailto BAJA a `hola@herohome.es`).
+- **CTAs → anclas de la home:** calculadora `herohome.es/#precios`, `#como-funciona`, `#hero-ia`.
+- **Imágenes de los emails:** capturadas de las maquetas HTML de la web (home + `/mi-app`, no eran imágenes) y **alojadas en Supabase Storage** (bucket público `email-assets`): `visitas-pendientes.png` y `Hero-chat.png` (⚠️ H mayúscula). En producción se sirven desde esas URLs (Gmail/Outlook bloquean data-URIs; los previews del repo llevan data-URI solo para revisión).
+- **Previews validados** en `docs/mockups/valuation-emails/` (+ `img/`). `docs/FUNCIONAMIENTO.md` actualizado (§4.1 flujo y §7.1 catálogo de emails).
+- **Deploy:** push a `main` → **Deploy ✅ + Tests ✅** (aviso no bloqueante de Node 20 deprecado en los runners → tarea de mantenimiento: actualizar `actions/checkout` y `supabase/setup-cli`). Smoke test sin enviar correos: GET→405, POST sin/ con key mala→401. No hacen falta secrets nuevos (`HEROHOME_API_KEY`/`RESEND_API_KEY` ya existían).
+- **⏳ Pendiente (del usuario, no código):** (1) test e2e a una bandeja real (`curl` con la key → llega el email 1, se programan 2 y 3); (2) **conectar el formulario**: su handler de servidor debe hacer POST al webhook con `x-api-key: HEROHOME_API_KEY` (nunca desde el navegador) + añadir esa env var al proyecto de la web. URL: `https://zqkvcphtqmibttgnivku.supabase.co/functions/v1/valuation-sequence`.
+- **Deuda/limitación conocida:** sin estado ⇒ la baja (mailto BAJA) se gestiona a mano y no se puede cancelar la secuencia una vez lanzada (asumido por el usuario). Marketing sale por el mismo dominio que los transaccionales (vigilar reputación si crece el volumen; posible subdominio de envío a futuro).
 
 ### 14 julio 2026 — Condiciones especiales de la vivienda + conversaciones WhatsApp en el dashboard 💬
 
